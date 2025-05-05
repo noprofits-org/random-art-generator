@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <link rel="icon" href="data:,">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Met Art Generator</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+
+<body>
+    <div class="app-container">
+        <!-- Side Drawer for Controls -->
+        <div class="controls-drawer" id="controlsDrawer">
+            <div class="drawer-header">
+                <h2>Random Art Generator</h2>
+                <button class="toggle-drawer" id="toggleDrawer">
+                    <i class="fas fa-chevron-left"></i>
+                </button>
+            </div>
+            <div class="drawer-content">
+                <div class="control-group">
+                    <h3>Filters</h3>
+                    <!-- Filters will go here -->
+                    <div class="filter">
+                        <label for="departmentSelect">Department</label>
+                        <select id="departmentSelect">
+                            <option value="">Any Department</option>
+                            <!-- Departments will be populated from API -->
+                        </select>
+                    </div>
+
+                    <div class="filter">
+                        <label for="dateRange">Date Range</label>
+                        <div class="date-inputs">
+                            <input type="number" id="dateBegin" placeholder="From Year">
+                            <input type="number" id="dateEnd" placeholder="To Year">
+                        </div>
+                        <div class="date-tooltip">
+                            Use negative numbers for BCE/BC (e.g., -800 for 800 BCE)
+                        </div>
+                    </div>
+
+                    <div class="filter">
+                        <label for="mediumSelect">Medium</label>
+                        <select id="mediumSelect">
+                            <option value="">Any Medium</option>
+                            <option value="Paintings">Paintings</option>
+                            <option value="Sculpture">Sculpture</option>
+                            <option value="Photographs">Photographs</option>
+                            <option value="Ceramics">Ceramics</option>
+                            <option value="Textiles">Textiles</option>
+                        </select>
+                    </div>
+                </div>
+
+                <button class="primary-button" id="randomArtButton">
+                    Discover Random Artwork
+                </button>
+            </div>
+        </div>
+
+        <!-- Main Content Area -->
+        <div class="content-area" id="contentArea">
+            <div class="artwork-container" id="artworkContainer">
+                <!-- Artwork will be displayed here -->
+                <div class="artwork-placeholder">
+                    <i class="fas fa-paint-brush"></i>
+                    <p>Click "Discover Random Artwork" to begin your artistic journey</p>
+                </div>
+            </div>
+
+            <div class="artwork-info" id="artworkInfo">
+                <!-- Artwork metadata will go here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts - Make sure these paths match your project structure -->
+    <script src="config.js"></script>
+    <script src="utils.js"></script>
+    <script src="api.js"></script>
+    <script src="artwork.js"></script>
+    <script src="ui.js"></script>
+    <script src="filters.js"></script>
+    <script src="app.js"></script>
+</body>
+
+</html>

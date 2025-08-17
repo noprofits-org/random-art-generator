@@ -116,24 +116,25 @@
         </div>
     </div>
 
-    <!-- Scripts - Make sure these paths match your project structure -->
-    <!-- FIXED: Added init.js first and reorganized loading order for proper dependencies -->
+    <!-- Scripts - Simplified for core functionality -->
     <script src="./config.js"></script>
-    <script src="./state-manager.js"></script>
-    <script src="./error-handler.js"></script>
     <script src="./event-manager.js"></script>
     <script src="./utils.js"></script>
+    <script src="./api-simple.js"></script>
+    <script src="./favorites.js"></script>
+    <script src="./artwork-simple.js"></script>
+    <script src="./ui-simple.js"></script>
+    <script src="./init-simple.js"></script>
+    
+    <!-- REMOVED: No longer needed without search/filters
+    <script src="./state-manager.js"></script>
+    <script src="./error-handler.js"></script>
     <script src="./virtual-scroll.js"></script>
     <script src="./api.js"></script>
-    <script src="./favorites.js"></script>
-    <script src="./artwork.js"></script>
-    <script src="./ui.js"></script>
-    <!-- REMOVED: Filter and search scripts
     <script src="./filters.js"></script>
     <script src="./search-results.js"></script>
-    -->
     <script src="./init.js"></script>
-    <!-- app.js removed - functionality moved to init.js -->
+    -->
 </body>
 
 </html>

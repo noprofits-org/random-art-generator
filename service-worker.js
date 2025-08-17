@@ -8,24 +8,26 @@ const MAX_CACHED_IMAGES = 50;
 
 // Static assets to cache on install
 const STATIC_ASSETS = [
-    '/',
-    '/index.html',
-    '/offline.html',
-    '/styles.css',
-    '/app.js',
-    '/api.js',
-    '/artwork.js',
-    '/filters.js',
-    '/ui.js',
-    '/config.js',
-    '/utils.js',
-    '/manifest.json',
-    '/icons/icon-48.png',
-    '/icons/icon-72.png',
-    '/icons/icon-96.png',
-    '/icons/icon-144.png',
-    '/icons/icon-192.png',
-    '/icons/icon-512.png'
+    './',
+    './index.html',
+    './offline.html',
+    './styles.css',
+    './app.js',
+    './api.js',
+    './artwork.js',
+    './filters.js',
+    './ui.js',
+    './config.js',
+    './utils.js',
+    './favorites.js',
+    './search-results.js',
+    './manifest.json',
+    './icons/icon-48x48.png',
+    './icons/icon-72x72.png',
+    './icons/icon-96x96.png',
+    './icons/icon-144x144.png',
+    './icons/icon-192x192.png',
+    './icons/icon-512x512.png'
 ];
 
 // Install event - cache static assets
@@ -129,7 +131,7 @@ async function cacheFirstStrategy(request) {
         
         // Return offline page for navigation requests
         if (request.mode === 'navigate') {
-            const offlineResponse = await caches.match('/offline.html');
+            const offlineResponse = await caches.match('./offline.html');
             if (offlineResponse) {
                 return offlineResponse;
             }

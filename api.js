@@ -394,7 +394,7 @@ async function searchArtworks(filters = {}) {
         // Build the search query with default to prevent 502
         let queryParams = `q=${encodeURIComponent(query)}`;
         
-        // Always add hasImages=true unless explicitly searching for all
+        // FIXED: Always add hasImages=true for better results
         queryParams += '&hasImages=true';
         
         // Add additional filters
@@ -510,6 +510,7 @@ async function getObjectDetailsMultiple(objectIds, batchSize = 5) {
             results.push(...batchResults.filter(result => result !== null));
             
             // Update loading progress if UI callback exists
+            // FIXED: Already has defensive check for window.MetUI
             if (window.MetUI && window.MetUI.updateLoadingProgress) {
                 const progress = ((i + batch.length) / uncached.length) * 100;
                 window.MetUI.updateLoadingProgress(progress);
@@ -594,8 +595,13 @@ async function getObjectDetails(objectId) {
 async function getRandomArtwork(filters = {}) {
     try {
         // Show loading state
-        window.MetUI.showLoading();
-        window.MetUI.updateLoadingMessage('Finding artwork...');
+        // FIXED: Added defensive check for window.MetUI before use
+        if (window.MetUI && window.MetUI.showLoading) {
+            window.MetUI.showLoading();
+            if (window.MetUI.updateLoadingMessage) {
+                window.MetUI.updateLoadingMessage('Finding artwork...');
+            }
+        }
         
         let objectIDs = [];
         
@@ -616,8 +622,13 @@ async function getRandomArtwork(filters = {}) {
         }
         
         if (!objectIDs || objectIDs.length === 0) {
-            window.MetUI.hideLoading();
-            window.MetUI.showError('Unable to find artworks. Please try again.');
+            // FIXED: Added defensive check for window.MetUI before use
+            if (window.MetUI && window.MetUI.hideLoading) {
+                window.MetUI.hideLoading();
+            }
+            if (window.MetUI && window.MetUI.showError) {
+                window.MetUI.showError('Unable to find artworks. Please try again.');
+            }
             return null;
         }
         
@@ -638,19 +649,29 @@ async function getRandomArtwork(filters = {}) {
         }
         
         // Hide loading state
-        window.MetUI.hideLoading();
+        // FIXED: Added defensive check for window.MetUI before use
+        if (window.MetUI && window.MetUI.hideLoading) {
+            window.MetUI.hideLoading();
+        }
         
         if (!objectDetails) {
             console.warn('Could not find any artwork with images');
-            window.MetUI.showError('No artworks with images found. Please try again.');
+            if (window.MetUI && window.MetUI.showError) {
+                window.MetUI.showError('No artworks with images found. Please try again.');
+            }
             return null;
         }
         
         return objectDetails;
     } catch (error) {
         console.error('Error getting random artwork:', error);
-        window.MetUI.hideLoading();
-        window.MetUI.showError('Error fetching artwork. Please try again.');
+        // FIXED: Added defensive check for window.MetUI before use
+        if (window.MetUI && window.MetUI.hideLoading) {
+            window.MetUI.hideLoading();
+        }
+        if (window.MetUI && window.MetUI.showError) {
+            window.MetUI.showError('Error fetching artwork. Please try again.');
+        }
         return null;
     }
 }
@@ -663,8 +684,13 @@ async function getRandomArtworkWithFallback(filters = {}) {
         if (result) return result;
         
         // If no results, try with only hasImages=true
-        window.MetUI.showLoading();
-        window.MetUI.updateLoadingMessage('No artworks with images found. Trying with minimal filters...');
+        // FIXED: Added defensive check for window.MetUI before use
+        if (window.MetUI && window.MetUI.showLoading) {
+            window.MetUI.showLoading();
+        }
+        if (window.MetUI && window.MetUI.updateLoadingMessage) {
+            window.MetUI.updateLoadingMessage('No artworks with images found. Trying with minimal filters...');
+        }
         
         const minimalResult = await getRandomArtwork({}); // Minimal query
         if (minimalResult) return minimalResult;
@@ -675,8 +701,13 @@ async function getRandomArtworkWithFallback(filters = {}) {
             delete simpleFilters.departmentId;
             delete simpleFilters.medium;
             
-            window.MetUI.showLoading();
-            window.MetUI.updateLoadingMessage('Searching more broadly for artworks with images...');
+            // FIXED: Added defensive check for window.MetUI before use
+            if (window.MetUI && window.MetUI.showLoading) {
+                window.MetUI.showLoading();
+            }
+            if (window.MetUI && window.MetUI.updateLoadingMessage) {
+                window.MetUI.updateLoadingMessage('Searching more broadly for artworks with images...');
+            }
             
             return await getRandomArtwork(simpleFilters);
         }
@@ -684,8 +715,13 @@ async function getRandomArtworkWithFallback(filters = {}) {
         return null;
     } catch (error) {
         console.error('Error in artwork fallback:', error);
-        window.MetUI.hideLoading();
-        window.MetUI.showError('Unable to find artworks with images. Please try different filters.');
+        // FIXED: Added defensive check for window.MetUI before use
+        if (window.MetUI && window.MetUI.hideLoading) {
+            window.MetUI.hideLoading();
+        }
+        if (window.MetUI && window.MetUI.showError) {
+            window.MetUI.showError('Unable to find artworks with images. Please try different filters.');
+        }
         return null;
     }
 }
@@ -759,15 +795,26 @@ async function getRandomArtworkEnhanced(filters = {}) {
     // Check if we're online
     if (!navigator.onLine) {
         console.log('Offline - attempting to load cached artwork');
-        window.MetUI.updateLoadingMessage('Loading from offline collection...');
+        // FIXED: Added defensive check for window.MetUI before use
+        if (window.MetUI && window.MetUI.updateLoadingMessage) {
+            window.MetUI.updateLoadingMessage('Loading from offline collection...');
+        }
         
         const cachedArtwork = await getRandomCachedArtwork();
         if (cachedArtwork) {
-            window.MetUI.hideLoading();
+            // FIXED: Added defensive check for window.MetUI before use
+            if (window.MetUI && window.MetUI.hideLoading) {
+                window.MetUI.hideLoading();
+            }
             return cachedArtwork;
         } else {
-            window.MetUI.hideLoading();
-            window.MetUI.showError('No cached artworks available. Connect to the internet to discover new artworks.');
+            // FIXED: Added defensive check for window.MetUI before use
+            if (window.MetUI && window.MetUI.hideLoading) {
+                window.MetUI.hideLoading();
+            }
+            if (window.MetUI && window.MetUI.showError) {
+                window.MetUI.showError('No cached artworks available. Connect to the internet to discover new artworks.');
+            }
             return null;
         }
     }

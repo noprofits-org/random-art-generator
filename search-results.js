@@ -40,20 +40,33 @@ function setupSearchResultsEvents() {
 
 // Perform a search
 async function performSearch(query, filters = {}, searchType = 'quick') {
-    if (!query || query === currentSearchQuery) {
+    // FIXED: Check if filters have changed too, not just query
+    const filtersChanged = JSON.stringify(filters) !== JSON.stringify(window.lastSearchFilters || {});
+    if (!query || (query === currentSearchQuery && !filtersChanged && searchType === currentSearchType)) {
         return;
     }
     
     currentSearchQuery = query;
     currentSearchType = searchType;
     currentPage = 1;
+    window.lastSearchFilters = { ...filters };
     
     // Show loading state
     window.MetUI.showSearchLoading();
     
     try {
-        // Simple search - just use the Met's search API
-        const searchFilters = { ...filters, searchQuery: query };
+        // FIXED: Use different search behavior based on searchType
+        let searchFilters = { ...filters };
+        
+        if (searchType === 'quick') {
+            // Quick search - only use the search query
+            searchFilters = { searchQuery: query };
+        } else if (searchType === 'advanced') {
+            // Advanced search - use all filters
+            searchFilters.searchQuery = query;
+            console.log('Performing advanced search with filters:', searchFilters);
+        }
+        
         const objectIds = await window.MetAPI.searchArtworks(searchFilters);
         
         if (!objectIds || objectIds.length === 0) {
@@ -82,6 +95,14 @@ async function performSearch(query, filters = {}, searchType = 'quick') {
         
         // Display results
         displaySearchResults();
+        
+        // FIXED: Show advanced search indicator if using advanced search
+        if (searchType === 'advanced') {
+            const searchResultsCount = document.getElementById('searchResultsCount');
+            if (searchResultsCount) {
+                searchResultsCount.innerHTML += ' <span class="advanced-search-indicator">(Advanced Search)</span>';
+            }
+        }
         
         // Fetch remaining details in the background
         if (limitedIds.length > RESULTS_PER_PAGE) {
@@ -379,7 +400,8 @@ function displaySearchHistory() {
         item.textContent = query;
         item.addEventListener('click', () => {
             document.getElementById('searchInput').value = query;
-            performSearch(query, window.MetFilters.getCurrentFilters());
+            // FIXED: Use quick search for history items
+            performSearch(query, window.MetFilters.getCurrentFilters(), 'quick');
         });
         historyContainer.appendChild(item);
     });

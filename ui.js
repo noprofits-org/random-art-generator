@@ -795,13 +795,8 @@ async function clearAllFavorites() {
     }
 }
 
-// Wait for DOM to be fully loaded before initializing UI
-document.addEventListener('DOMContentLoaded', () => {
-    initUI();
-    initOfflineDetection();
-    initFavoritesView();
-    initSearchUI();
-});
+// FIXED: Removed DOMContentLoaded listener - initialization now handled by init.js
+// The init.js module will call these functions in the proper order
 
 // Search mode functions
 function showSearchMode(show = true) {
@@ -828,6 +823,14 @@ function triggerSearch(query, searchType = 'quick') {
     
     // Get current filters
     const filters = window.MetFilters ? window.MetFilters.getCurrentFilters() : {};
+    
+    // FIXED: Ensure filters are properly passed to search
+    // For advanced search, the query might be in the title field
+    if (searchType === 'advanced' && filters.title) {
+        filters.searchQuery = filters.title;
+    } else if (query !== '*') {
+        filters.searchQuery = query;
+    }
     
     // Show search mode
     showSearchMode(true);
@@ -948,3 +951,9 @@ window.MetUI = {
     showSearchEmpty,
     showSearchError
 };
+
+// FIXED: Also expose initialization functions globally for init.js
+window.initUI = initUI;
+window.initOfflineDetection = initOfflineDetection;
+window.initFavoritesView = initFavoritesView;
+window.initSearchUI = initSearchUI;

@@ -264,6 +264,7 @@
     </div>
 
     <!-- Scripts - Make sure these paths match your project structure -->
+    <!-- FIXED: Added init.js first and reorganized loading order for proper dependencies -->
     <script src="./config.js"></script>
     <script src="./utils.js"></script>
     <script src="./api.js"></script>
@@ -272,7 +273,8 @@
     <script src="./ui.js"></script>
     <script src="./filters.js"></script>
     <script src="./search-results.js"></script>
-    <script src="./app.js"></script>
+    <script src="./init.js"></script>
+    <!-- app.js removed - functionality moved to init.js -->
 </body>
 
 </html>

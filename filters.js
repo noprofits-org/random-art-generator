@@ -199,6 +199,19 @@ function setupTextSearch() {
 // Perform search
 function performSearch(query) {
     console.log('Search query:', query);
+    // FIXED: Get current filters for quick search to include basic filters
+    const filters = {
+        departmentId: document.getElementById('departmentSelect')?.value || '',
+        dateBegin: document.getElementById('dateBegin')?.value || '',
+        dateEnd: document.getElementById('dateEnd')?.value || '',
+        medium: document.getElementById('mediumSelect')?.value || ''
+    };
+    
+    // Remove empty filters
+    Object.keys(filters).forEach(key => {
+        if (!filters[key]) delete filters[key];
+    });
+    
     // Trigger search through UI
     if (window.MetUI && window.MetUI.triggerSearch) {
         window.MetUI.triggerSearch(query, 'quick');
@@ -310,12 +323,16 @@ function triggerAdvancedSearch() {
     const hasSearchCriteria = filters.searchQuery || filters.title || 
                              filters.geoLocation || filters.excavation ||
                              filters.departmentId || filters.medium ||
-                             (filters.dateBegin && filters.dateEnd);
+                             (filters.dateBegin && filters.dateEnd) ||
+                             filters.isHighlight || filters.artistOrCulture;
     
     if (hasSearchCriteria) {
         console.log('Triggering advanced search with filters:', filters);
+        // FIXED: Pass filters to triggerSearch and ensure search uses them
         if (window.MetUI && window.MetUI.triggerSearch) {
-            window.MetUI.triggerSearch(filters.searchQuery || '*', 'advanced', filters);
+            // Use title as the main query if provided, otherwise use searchQuery
+            const query = filters.title || filters.searchQuery || '*';
+            window.MetUI.triggerSearch(query, 'advanced');
         }
     } else {
         console.log('No search criteria provided for advanced search');

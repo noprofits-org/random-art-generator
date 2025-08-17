@@ -1,12 +1,20 @@
 // Service Worker for Met Art Generator
-// Version: 1.2.0
+// FIXED: Enhanced cache management with automatic cleanup
 
-const CACHE_NAME = 'met-art-generator-v1.2';
-const API_CACHE_NAME = 'met-art-api-v1.2';
-const IMAGE_CACHE_NAME = 'met-art-images-v1.2';
-const MAX_CACHED_IMAGES = 50;
+// Import configuration if available
+const CONFIG = {
+    CACHE_VERSION: '1.3.0',
+    MAX_CACHED_IMAGES: 100,
+    MAX_CACHE_AGE: 7 * 24 * 60 * 60 * 1000,
+    CACHE_CLEANUP_INTERVAL: 60 * 60 * 1000
+};
+
+const CACHE_NAME = `met-art-generator-v${CONFIG.CACHE_VERSION}`;
+const API_CACHE_NAME = `met-art-api-v${CONFIG.CACHE_VERSION}`;
+const IMAGE_CACHE_NAME = `met-art-images-v${CONFIG.CACHE_VERSION}`;
+const MAX_CACHED_IMAGES = CONFIG.MAX_CACHED_IMAGES;
 const MAX_API_CACHE_AGE = 30 * 60 * 1000; // 30 minutes
-const MAX_IMAGE_CACHE_AGE = 7 * 24 * 60 * 60 * 1000; // 7 days
+const MAX_IMAGE_CACHE_AGE = CONFIG.MAX_CACHE_AGE;
 
 // Static assets to cache on install
 const STATIC_ASSETS = [
@@ -457,3 +465,106 @@ async function cleanupAPICache() {
         console.error('[Service Worker] Error cleaning API cache:', error);
     }
 }
+
+// FIXED: Enhanced cache management with size limits and automatic cleanup
+async function manageCacheSize(cache) {
+    try {
+        const keys = await cache.keys();
+        const cacheEntries = [];
+        
+        // Get all cache entries with their metadata
+        for (const request of keys) {
+            const response = await cache.match(request);
+            const headers = response.headers;
+            
+            cacheEntries.push({
+                request,
+                size: parseInt(headers.get('content-length') || '0'),
+                date: new Date(headers.get('date') || Date.now()),
+                url: request.url
+            });
+        }
+        
+        // Sort by date (oldest first)
+        cacheEntries.sort((a, b) => a.date - b.date);
+        
+        // Remove oldest entries if we exceed the limit
+        const entriesToRemove = cacheEntries.length - MAX_CACHED_IMAGES;
+        if (entriesToRemove > 0) {
+            console.log(`[Service Worker] Removing ${entriesToRemove} old cache entries`);
+            
+            for (let i = 0; i < entriesToRemove; i++) {
+                await cache.delete(cacheEntries[i].request);
+            }
+        }
+        
+        // Also remove expired entries
+        const now = Date.now();
+        for (const entry of cacheEntries) {
+            const age = now - entry.date.getTime();
+            if (age > MAX_IMAGE_CACHE_AGE) {
+                await cache.delete(entry.request);
+                console.log('[Service Worker] Removed expired image:', entry.url);
+            }
+        }
+    } catch (error) {
+        console.error('[Service Worker] Error managing cache size:', error);
+    }
+}
+
+// Periodic cache cleanup
+let cleanupInterval = null;
+
+async function startPeriodicCleanup() {
+    // Clear any existing interval
+    if (cleanupInterval) {
+        clearInterval(cleanupInterval);
+    }
+    
+    // Run cleanup immediately
+    await performCacheCleanup();
+    
+    // Set up periodic cleanup
+    cleanupInterval = setInterval(async () => {
+        await performCacheCleanup();
+    }, CONFIG.CACHE_CLEANUP_INTERVAL);
+}
+
+async function performCacheCleanup() {
+    console.log('[Service Worker] Running cache cleanup...');
+    
+    try {
+        // Clean up each cache type
+        const cacheNames = [CACHE_NAME, API_CACHE_NAME, IMAGE_CACHE_NAME];
+        
+        for (const cacheName of cacheNames) {
+            const cache = await caches.open(cacheName);
+            
+            if (cacheName === IMAGE_CACHE_NAME) {
+                await manageCacheSize(cache);
+            } else if (cacheName === API_CACHE_NAME) {
+                await cleanupAPICache();
+            }
+        }
+        
+        // Also remove old cache versions
+        const allCaches = await caches.keys();
+        const currentCaches = new Set(cacheNames);
+        
+        for (const cacheName of allCaches) {
+            if (!currentCaches.has(cacheName) && cacheName.startsWith('met-art-')) {
+                console.log('[Service Worker] Removing old cache version:', cacheName);
+                await caches.delete(cacheName);
+            }
+        }
+        
+        console.log('[Service Worker] Cache cleanup complete');
+    } catch (error) {
+        console.error('[Service Worker] Error during cache cleanup:', error);
+    }
+}
+
+// Start cleanup when service worker activates
+self.addEventListener('activate', (event) => {
+    event.waitUntil(startPeriodicCleanup());
+});

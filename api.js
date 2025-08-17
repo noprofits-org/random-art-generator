@@ -138,7 +138,7 @@ async function fetchWithProxy(endpoint, retries = 0, proxyIndex = 0) {
     
     const proxyUrl = `${currentProxy}${currentProxy.includes('?') ? '' : '?url='}${encodeURIComponent(targetUrl)}`;
     
-    console.log(`Fetching from proxy: ${proxyUrl}`);
+    window.MetLogger.log(`Fetching from proxy: ${proxyUrl}`);
     
     try {
         // Use fetch with retries

@@ -1,11 +1,19 @@
 // search-results.js - Handle search results display and interactions
 
-// Search state
-let currentSearchQuery = '';
-let currentSearchType = 'quick';
-let currentSearchResults = [];
-let currentPage = 1;
-const RESULTS_PER_PAGE = 20;
+// FIXED: Use StateManager for search state
+// Get references from state instead of global variables
+const getSearchState = () => window.MetState?.getState('search') || {
+    query: '',
+    type: 'quick',
+    results: [],
+    currentPage: 1,
+    totalResults: 0,
+    loading: false
+};
+
+// FIXED: Use configuration for performance settings
+const RESULTS_PER_PAGE = window.MetConfig?.SEARCH_RESULTS_PER_PAGE || 20;
+const MAX_RESULTS = window.MetConfig?.MAX_SEARCH_RESULTS || 200;
 
 // Initialize search results functionality
 function initSearchResults() {
@@ -19,36 +27,56 @@ function setupSearchResultsEvents() {
     const nextButton = document.getElementById('searchNextPage');
     
     if (prevButton) {
-        prevButton.addEventListener('click', () => {
-            if (currentPage > 1) {
-                currentPage--;
+        const prevHandler = () => {
+            const state = getSearchState();
+            if (state.currentPage > 1) {
+                window.MetState.setState('search.currentPage', state.currentPage - 1);
                 displaySearchResults();
             }
-        });
+        };
+        
+        if (window.MetEventManager) {
+            window.MetEventManager.addEventListener(prevButton, 'click', prevHandler);
+        } else {
+            prevButton.addEventListener('click', prevHandler);
+        }
     }
     
     if (nextButton) {
-        nextButton.addEventListener('click', () => {
-            const totalPages = Math.ceil(currentSearchResults.length / RESULTS_PER_PAGE);
-            if (currentPage < totalPages) {
-                currentPage++;
+        const nextHandler = () => {
+            const state = getSearchState();
+            const totalPages = Math.ceil(state.results.length / RESULTS_PER_PAGE);
+            if (state.currentPage < totalPages) {
+                window.MetState.setState('search.currentPage', state.currentPage + 1);
                 displaySearchResults();
             }
-        });
+        };
+        
+        if (window.MetEventManager) {
+            window.MetEventManager.addEventListener(nextButton, 'click', nextHandler);
+        } else {
+            nextButton.addEventListener('click', nextHandler);
+        }
     }
 }
 
 // Perform a search
 async function performSearch(query, filters = {}, searchType = 'quick') {
+    const state = getSearchState();
+    
     // FIXED: Check if filters have changed too, not just query
     const filtersChanged = JSON.stringify(filters) !== JSON.stringify(window.lastSearchFilters || {});
-    if (!query || (query === currentSearchQuery && !filtersChanged && searchType === currentSearchType)) {
+    if (!query || (query === state.query && !filtersChanged && searchType === state.type)) {
         return;
     }
     
-    currentSearchQuery = query;
-    currentSearchType = searchType;
-    currentPage = 1;
+    // Update state
+    window.MetState.batchUpdate({
+        'search.query': query,
+        'search.type': searchType,
+        'search.currentPage': 1,
+        'search.filters': filters
+    });
     window.lastSearchFilters = { ...filters };
     
     // Show loading state
@@ -64,30 +92,43 @@ async function performSearch(query, filters = {}, searchType = 'quick') {
         } else if (searchType === 'advanced') {
             // Advanced search - use all filters
             searchFilters.searchQuery = query;
-            console.log('Performing advanced search with filters:', searchFilters);
+            if (window.MetLogger) {
+                window.MetLogger.log('Performing advanced search with filters:', searchFilters);
+            }
         }
         
         const objectIds = await window.MetAPI.searchArtworks(searchFilters);
         
         if (!objectIds || objectIds.length === 0) {
             window.MetUI.showSearchEmpty(query);
-            currentSearchResults = [];
+            window.MetState.setState('search.results', []);
             return;
         }
         
-        // Limit to first 100 results for performance
-        const limitedIds = objectIds.slice(0, 100);
+        // FIXED: Use configured limit for performance
+        const limitedIds = objectIds.slice(0, MAX_RESULTS);
+        
+        // Log performance metric
+        if (window.MetLogger) {
+            window.MetLogger.log(`Search returned ${objectIds.length} results, limited to ${limitedIds.length}`);
+        }
         
         // Fetch details for the first page
         const firstPageIds = limitedIds.slice(0, RESULTS_PER_PAGE);
         const firstPageDetails = await window.MetAPI.getObjectDetailsMultiple(firstPageIds);
         
         // Store results in the order the Met API returned them
-        currentSearchResults = limitedIds.map((id, index) => {
+        const searchResults = limitedIds.map((id, index) => {
             if (index < RESULTS_PER_PAGE) {
                 return firstPageDetails.find(detail => detail && detail.objectID === id) || { objectID: id };
             }
             return { objectID: id };
+        });
+        
+        // Update state
+        window.MetState.batchUpdate({
+            'search.results': searchResults,
+            'search.totalResults': objectIds.length
         });
         
         // Add search to history
@@ -109,7 +150,9 @@ async function performSearch(query, filters = {}, searchType = 'quick') {
             fetchRemainingDetails(limitedIds.slice(RESULTS_PER_PAGE));
         }
     } catch (error) {
-        console.error('Search error:', error);
+        if (window.MetLogger) {
+            window.MetLogger.error('Search error:', error);
+        }
         window.MetUI.showSearchError();
     }
 }
@@ -120,24 +163,31 @@ async function performSearch(query, filters = {}, searchType = 'quick') {
 async function fetchRemainingDetails(remainingIds) {
     try {
         const details = await window.MetAPI.getObjectDetailsMultiple(remainingIds);
+        const currentResults = window.MetState.getState('search.results') || [];
         
         // Update the results array with the fetched details
+        const updatedResults = [...currentResults];
         details.forEach(detail => {
-            const index = currentSearchResults.findIndex(r => r.objectID === detail.objectID);
+            const index = updatedResults.findIndex(r => r.objectID === detail.objectID);
             if (index !== -1) {
-                currentSearchResults[index] = detail;
+                updatedResults[index] = detail;
             }
         });
+        
+        window.MetState.setState('search.results', updatedResults);
     } catch (error) {
-        console.error('Error fetching remaining details:', error);
+        if (window.MetLogger) {
+            window.MetLogger.error('Error fetching remaining details:', error);
+        }
     }
 }
 
 // Display search results for the current page
 function displaySearchResults() {
-    const startIndex = (currentPage - 1) * RESULTS_PER_PAGE;
+    const state = getSearchState();
+    const startIndex = (state.currentPage - 1) * RESULTS_PER_PAGE;
     const endIndex = startIndex + RESULTS_PER_PAGE;
-    const pageResults = currentSearchResults.slice(startIndex, endIndex);
+    const pageResults = state.results.slice(startIndex, endIndex);
     
     // Check if we need to fetch details for this page
     const needsDetails = pageResults.filter(r => !r.title).map(r => r.objectID);
@@ -145,12 +195,17 @@ function displaySearchResults() {
     if (needsDetails.length > 0) {
         // Fetch details for this page
         window.MetAPI.getObjectDetailsMultiple(needsDetails).then(details => {
+            const currentResults = window.MetState.getState('search.results') || [];
+            const updatedResults = [...currentResults];
+            
             details.forEach(detail => {
-                const index = currentSearchResults.findIndex(r => r.objectID === detail.objectID);
+                const index = updatedResults.findIndex(r => r.objectID === detail.objectID);
                 if (index !== -1) {
-                    currentSearchResults[index] = detail;
+                    updatedResults[index] = detail;
                 }
             });
+            
+            window.MetState.setState('search.results', updatedResults);
             
             // Re-display with the updated details
             renderSearchResults();
@@ -160,27 +215,88 @@ function displaySearchResults() {
     }
 }
 
+// FIXED: Optimized rendering with virtual scrolling option
+let virtualScroller = null;
+
 // Render the search results
 function renderSearchResults() {
-    const startIndex = (currentPage - 1) * RESULTS_PER_PAGE;
-    const endIndex = startIndex + RESULTS_PER_PAGE;
-    const pageResults = currentSearchResults.slice(startIndex, endIndex);
-    
     const resultsGrid = document.getElementById('searchResultsGrid');
     if (!resultsGrid) return;
+    
+    const state = getSearchState();
+    
+    // Use virtual scrolling for large result sets
+    if (state.results.length > 100 && window.VirtualScroller) {
+        renderVirtualSearchResults();
+        return;
+    }
+    
+    // Regular pagination for smaller sets
+    const startIndex = (state.currentPage - 1) * RESULTS_PER_PAGE;
+    const endIndex = startIndex + RESULTS_PER_PAGE;
+    const pageResults = state.results.slice(startIndex, endIndex);
     
     // Clear existing results
     resultsGrid.innerHTML = '';
     
+    // Performance: Use document fragment
+    const fragment = document.createDocumentFragment();
+    
     // Create result items
     pageResults.forEach(artwork => {
         const resultItem = createSearchResultItem(artwork);
-        resultsGrid.appendChild(resultItem);
+        fragment.appendChild(resultItem);
     });
     
+    // Append all at once
+    resultsGrid.appendChild(fragment);
+    
     // Update UI
-    window.MetUI.showSearchResults(currentSearchResults.length, currentSearchQuery);
+    window.MetUI.showSearchResults(state.results.length, state.query);
     updatePagination();
+}
+
+// Render with virtual scrolling
+function renderVirtualSearchResults() {
+    const resultsGrid = document.getElementById('searchResultsGrid');
+    const searchPagination = document.getElementById('searchPagination');
+    
+    if (!resultsGrid) return;
+    
+    const state = getSearchState();
+    
+    // Hide regular pagination
+    if (searchPagination) {
+        searchPagination.style.display = 'none';
+    }
+    
+    // Clean up existing virtual scroller
+    if (virtualScroller) {
+        virtualScroller.destroy();
+    }
+    
+    // Clear grid and set height
+    resultsGrid.innerHTML = '';
+    resultsGrid.style.height = '600px'; // Fixed height for virtual scrolling
+    
+    // Create virtual scroller
+    virtualScroller = new window.VirtualScroller(resultsGrid, {
+        itemHeight: 200,
+        bufferSize: 5,
+        onRenderItem: (artwork, index) => {
+            return createSearchResultItem(artwork);
+        }
+    });
+    
+    // Set items
+    virtualScroller.setItems(state.results);
+    
+    // Update UI
+    window.MetUI.showSearchResults(state.results.length, state.query);
+    
+    if (window.MetLogger) {
+        window.MetLogger.log('Using virtual scrolling for', state.results.length, 'results');
+    }
 }
 
 // Create a search result item element
@@ -227,7 +343,9 @@ function createSearchResultItem(artwork) {
             tempImg.onerror = async () => {
                 if (!fallbackAttempted && window.MetAPI.loadArtworkImageWithFallback) {
                     fallbackAttempted = true;
-                    console.log('Search result image failed, trying fallback proxy...');
+                    if (window.MetLogger) {
+                        window.MetLogger.log('Search result image failed, trying fallback proxy...');
+                    }
                     
                     const fallbackUrl = await window.MetAPI.loadArtworkImageWithFallback(artwork.primaryImageSmall);
                     if (fallbackUrl) {
@@ -247,7 +365,9 @@ function createSearchResultItem(artwork) {
             // Set a timeout for slow loads
             setTimeout(() => {
                 if (!tempImg.complete && !fallbackAttempted && window.MetAPI.getNextProxyUrl) {
-                    console.log('Search image slow, rotating proxy...');
+                    if (window.MetLogger) {
+                        window.MetLogger.log('Search image slow, rotating proxy...');
+                    }
                     window.MetAPI.getNextProxyUrl();
                 }
             }, 5000);
@@ -317,7 +437,8 @@ function createSearchResultItem(artwork) {
 // View an artwork from search results
 async function viewArtworkFromSearch(objectId) {
     // Find the artwork in our results
-    const artwork = currentSearchResults.find(r => r.objectID === objectId);
+    const state = getSearchState();
+    const artwork = state.results.find(r => r.objectID === objectId);
     
     if (artwork && artwork.title) {
         // We already have the details
@@ -333,7 +454,9 @@ async function viewArtworkFromSearch(objectId) {
                 window.MetArtwork.displayArtwork(details);
             }
         } catch (error) {
-            console.error('Error loading artwork:', error);
+            if (window.MetLogger) {
+                window.MetLogger.error('Error loading artwork:', error);
+            }
             window.MetUI.showError('Failed to load artwork details');
         }
         window.MetUI.hideLoading();
@@ -342,21 +465,22 @@ async function viewArtworkFromSearch(objectId) {
 
 // Update pagination controls
 function updatePagination() {
-    const totalPages = Math.ceil(currentSearchResults.length / RESULTS_PER_PAGE);
+    const state = getSearchState();
+    const totalPages = Math.ceil(state.results.length / RESULTS_PER_PAGE);
     const prevButton = document.getElementById('searchPrevPage');
     const nextButton = document.getElementById('searchNextPage');
     const pageInfo = document.getElementById('searchPageInfo');
     
     if (prevButton) {
-        prevButton.disabled = currentPage === 1;
+        prevButton.disabled = state.currentPage === 1;
     }
     
     if (nextButton) {
-        nextButton.disabled = currentPage === totalPages;
+        nextButton.disabled = state.currentPage === totalPages;
     }
     
     if (pageInfo) {
-        pageInfo.textContent = `Page ${currentPage} of ${totalPages}`;
+        pageInfo.textContent = `Page ${state.currentPage} of ${totalPages}`;
     }
 }
 
@@ -369,7 +493,9 @@ function getSearchHistory() {
         const history = localStorage.getItem(SEARCH_HISTORY_KEY);
         return history ? JSON.parse(history) : [];
     } catch (error) {
-        console.error('Error reading search history:', error);
+        if (window.MetLogger) {
+            window.MetLogger.error('Error reading search history:', error);
+        }
         return [];
     }
 }
@@ -394,7 +520,9 @@ function addToSearchHistory(query) {
         // Update UI
         displaySearchHistory();
     } catch (error) {
-        console.error('Error saving search history:', error);
+        if (window.MetLogger) {
+            window.MetLogger.error('Error saving search history:', error);
+        }
     }
 }
 
@@ -403,7 +531,9 @@ function clearSearchHistory() {
         localStorage.removeItem(SEARCH_HISTORY_KEY);
         displaySearchHistory();
     } catch (error) {
-        console.error('Error clearing search history:', error);
+        if (window.MetLogger) {
+            window.MetLogger.error('Error clearing search history:', error);
+        }
     }
 }
 
@@ -425,7 +555,10 @@ function displaySearchHistory() {
         item.className = 'search-history-item';
         item.textContent = query;
         item.addEventListener('click', () => {
-            document.getElementById('searchInput').value = query;
+            const searchInput = document.getElementById('searchInput');
+            if (searchInput) {
+                searchInput.value = query;
+            }
             // FIXED: Use quick search for history items
             performSearch(query, window.MetFilters.getCurrentFilters(), 'quick');
         });
@@ -435,9 +568,12 @@ function displaySearchHistory() {
 
 // Clear current search
 function clearSearch() {
-    currentSearchQuery = '';
-    currentSearchResults = [];
-    currentPage = 1;
+    window.MetState.batchUpdate({
+        'search.query': '',
+        'search.results': [],
+        'search.currentPage': 1,
+        'search.totalResults': 0
+    });
     window.MetUI.showSearchMode(false);
 }
 

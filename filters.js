@@ -6,6 +6,10 @@ async function initFilters() {
     setupDateFilters();
     setupTextSearch();
     setupAdvancedSearch();
+    setupFilterChangeHandlers();
+    
+    // Subscribe to state changes
+    subscribeToStateChanges();
     
     // More filter initialization can go here as we add new features
 }
@@ -15,7 +19,9 @@ async function populateDepartmentDropdown() {
     const departmentSelect = document.getElementById('departmentSelect');
     
     if (!departmentSelect) {
-        console.error('Department select element not found');
+        if (window.MetLogger) {
+            window.MetLogger.error('Department select element not found');
+        }
         return;
     }
     
@@ -33,9 +39,13 @@ async function populateDepartmentDropdown() {
             departmentSelect.appendChild(option);
         });
         
-        console.log(`Populated department dropdown with ${departments.length} departments`);
+        if (window.MetLogger) {
+            window.MetLogger.log(`Populated department dropdown with ${departments.length} departments`);
+        }
     } catch (error) {
-        console.error('Error populating department dropdown:', error);
+        if (window.MetLogger) {
+            window.MetLogger.error('Error populating department dropdown:', error);
+        }
     }
 }
 
@@ -45,7 +55,9 @@ function setupDateFilters() {
     const dateEndInput = document.getElementById('dateEnd');
     
     if (!dateBeginInput || !dateEndInput) {
-        console.error('Date input elements not found');
+        if (window.MetLogger) {
+            window.MetLogger.error('Date input elements not found');
+        }
         return;
     }
     
@@ -55,8 +67,22 @@ function setupDateFilters() {
     dateEndInput.placeholder = "(e.g. 2025)";
     
     // Add validation for the date range
-    dateBeginInput.addEventListener('change', () => validateDateRange(dateBeginInput, dateEndInput));
-    dateEndInput.addEventListener('change', () => validateDateRange(dateBeginInput, dateEndInput));
+    const beginChangeHandler = () => {
+        validateDateRange(dateBeginInput, dateEndInput);
+        updateStateFromFilters();
+    };
+    const endChangeHandler = () => {
+        validateDateRange(dateBeginInput, dateEndInput);
+        updateStateFromFilters();
+    };
+    
+    if (window.MetEventManager) {
+        window.MetEventManager.addEventListener(dateBeginInput, 'change', beginChangeHandler);
+        window.MetEventManager.addEventListener(dateEndInput, 'change', endChangeHandler);
+    } else {
+        dateBeginInput.addEventListener('change', beginChangeHandler);
+        dateEndInput.addEventListener('change', endChangeHandler);
+    }
     
     // Set up time period buttons
     setupTimePeriodButtons(dateBeginInput, dateEndInput);
@@ -67,7 +93,7 @@ function setupTimePeriodButtons(dateBeginInput, dateEndInput) {
     const timePeriodButtons = document.querySelectorAll('.time-period-btn');
     
     timePeriodButtons.forEach(button => {
-        button.addEventListener('click', () => {
+        const clickHandler = () => {
             const begin = button.dataset.begin;
             const end = button.dataset.end;
             
@@ -86,7 +112,16 @@ function setupTimePeriodButtons(dateBeginInput, dateEndInput) {
             // Trigger a change event to update any listeners
             dateBeginInput.dispatchEvent(new Event('change'));
             dateEndInput.dispatchEvent(new Event('change'));
-        });
+            
+            // Update state
+            updateStateFromFilters();
+        };
+        
+        if (window.MetEventManager) {
+            window.MetEventManager.addEventListener(button, 'click', clickHandler);
+        } else {
+            button.addEventListener('click', clickHandler);
+        }
     });
     
     // Check if current values match any time period
@@ -121,7 +156,9 @@ function validateDateRange(beginInput, endInput) {
     if (!isNaN(beginYear) && !isNaN(endYear) && beginYear > endYear) {
         beginInput.classList.add('error');
         endInput.classList.add('error');
-        console.warn('Invalid date range: begin year must be before end year');
+        if (window.MetLogger) {
+            window.MetLogger.warn('Invalid date range: begin year must be before end year');
+        }
     }
 }
 
@@ -131,7 +168,9 @@ function setupTextSearch() {
     const searchButton = document.getElementById('searchButton');
     
     if (!searchInput || !searchButton) {
-        console.error('Search elements not found');
+        if (window.MetLogger) {
+            window.MetLogger.error('Search elements not found');
+        }
         return;
     }
     
@@ -154,17 +193,23 @@ function setupTextSearch() {
         })();
     
     // Handle search button click - immediate search
-    searchButton.addEventListener('click', () => {
+    const searchButtonHandler = () => {
         const value = searchInput.value.trim();
         if (value) {
             // Cancel any pending debounced search
             debouncedSearch.cancel?.();
             performSearch(value);
         }
-    });
+    };
+    
+    if (window.MetEventManager) {
+        window.MetEventManager.addEventListener(searchButton, 'click', searchButtonHandler);
+    } else {
+        searchButton.addEventListener('click', searchButtonHandler);
+    }
     
     // Handle Enter key in search input - immediate search
-    searchInput.addEventListener('keypress', (e) => {
+    const searchKeypressHandler = (e) => {
         if (e.key === 'Enter') {
             e.preventDefault(); // Prevent form submission
             const value = searchInput.value.trim();
@@ -174,10 +219,16 @@ function setupTextSearch() {
                 performSearch(value);
             }
         }
-    });
+    };
+    
+    if (window.MetEventManager) {
+        window.MetEventManager.addEventListener(searchInput, 'keypress', searchKeypressHandler);
+    } else {
+        searchInput.addEventListener('keypress', searchKeypressHandler);
+    }
     
     // Handle input changes with debouncing
-    searchInput.addEventListener('input', (e) => {
+    const searchInputHandler = (e) => {
         const value = e.target.value.trim();
         
         if (!value) {
@@ -190,7 +241,13 @@ function setupTextSearch() {
             // Trigger debounced search
             debouncedSearch(value);
         }
-    });
+    };
+    
+    if (window.MetEventManager) {
+        window.MetEventManager.addEventListener(searchInput, 'input', searchInputHandler);
+    } else {
+        searchInput.addEventListener('input', searchInputHandler);
+    }
     
     // Store reference for cleanup if needed
     searchInput._debouncedSearch = debouncedSearch;
@@ -198,7 +255,9 @@ function setupTextSearch() {
 
 // Perform search
 function performSearch(query) {
-    console.log('Search query:', query);
+    if (window.MetLogger) {
+        window.MetLogger.log('Search query:', query);
+    }
     // FIXED: Get current filters for quick search to include basic filters
     const filters = {
         departmentId: document.getElementById('departmentSelect')?.value || '',
@@ -225,11 +284,13 @@ function setupAdvancedSearch() {
     const advancedFields = document.getElementById('advancedSearchFields');
     
     if (!toggleButton || !advancedFields) {
-        console.error('Advanced search elements not found');
+        if (window.MetLogger) {
+            window.MetLogger.error('Advanced search elements not found');
+        }
         return;
     }
     
-    toggleButton.addEventListener('click', () => {
+    const toggleHandler = () => {
         const isVisible = advancedFields.style.display !== 'none';
         advancedFields.style.display = isVisible ? 'none' : 'block';
         toggleButton.innerHTML = isVisible 
@@ -240,7 +301,13 @@ function setupAdvancedSearch() {
         if (window.localStorage) {
             localStorage.setItem('advancedSearchVisible', !isVisible);
         }
-    });
+    };
+    
+    if (window.MetEventManager) {
+        window.MetEventManager.addEventListener(toggleButton, 'click', toggleHandler);
+    } else {
+        toggleButton.addEventListener('click', toggleHandler);
+    }
     
     // Restore advanced search visibility from localStorage
     if (window.localStorage) {
@@ -273,7 +340,9 @@ function connectAdvancedSearchFields() {
                 window.MetUtils.debounce(() => {
                     const value = field.value.trim();
                     if (value) {
-                        console.log(`Advanced search field ${fieldId} changed:`, value);
+                        if (window.MetLogger) {
+                            window.MetLogger.log(`Advanced search field ${fieldId} changed:`, value);
+                        }
                         triggerAdvancedSearch();
                     }
                 }, 750) : // Slightly longer delay for advanced fields
@@ -285,7 +354,7 @@ function connectAdvancedSearchFields() {
             }
             
             // Handle Enter key for immediate search
-            field.addEventListener('keypress', (e) => {
+            const keypressHandler = (e) => {
                 if (e.key === 'Enter') {
                     e.preventDefault();
                     if (field._debouncedHandler) {
@@ -293,9 +362,25 @@ function connectAdvancedSearchFields() {
                     }
                     triggerAdvancedSearch();
                 }
-            });
+            };
+            
+            if (window.MetEventManager) {
+                window.MetEventManager.addEventListener(field, 'keypress', keypressHandler);
+            } else {
+                field.addEventListener('keypress', keypressHandler);
+            }
         }
     });
+    
+    // FIXED: Add debounced event handlers for input fields
+    if (window.MetEventManager) {
+        fields.forEach(fieldId => {
+            const field = document.getElementById(fieldId);
+            if (field && debouncedHandler) {
+                window.MetEventManager.addEventListener(field, 'input', debouncedHandler);
+            }
+        });
+    }
     
     // Checkbox fields that should trigger search immediately
     const checkboxFields = [
@@ -307,10 +392,19 @@ function connectAdvancedSearchFields() {
     checkboxFields.forEach(fieldId => {
         const checkbox = document.getElementById(fieldId);
         if (checkbox) {
-            checkbox.addEventListener('change', () => {
-                console.log(`Checkbox ${fieldId} changed:`, checkbox.checked);
+            const changeHandler = () => {
+                if (window.MetLogger) {
+                    window.MetLogger.log(`Checkbox ${fieldId} changed:`, checkbox.checked);
+                }
+                updateStateFromFilters();
                 triggerAdvancedSearch();
-            });
+            };
+            
+            if (window.MetEventManager) {
+                window.MetEventManager.addEventListener(checkbox, 'change', changeHandler);
+            } else {
+                checkbox.addEventListener('change', changeHandler);
+            }
         }
     });
 }
@@ -327,7 +421,9 @@ function triggerAdvancedSearch() {
                              filters.isHighlight || filters.artistOrCulture;
     
     if (hasSearchCriteria) {
-        console.log('Triggering advanced search with filters:', filters);
+        if (window.MetLogger) {
+            window.MetLogger.log('Triggering advanced search with filters:', filters);
+        }
         // FIXED: Pass filters to triggerSearch and ensure search uses them
         if (window.MetUI && window.MetUI.triggerSearch) {
             // Use title as the main query if provided, otherwise use searchQuery
@@ -335,13 +431,24 @@ function triggerAdvancedSearch() {
             window.MetUI.triggerSearch(query, 'advanced');
         }
     } else {
-        console.log('No search criteria provided for advanced search');
+        if (window.MetLogger) {
+            window.MetLogger.log('No search criteria provided for advanced search');
+        }
     }
 }
 
 
-// Get the current filters from the UI
+// FIXED: Get the current filters from state if available, otherwise from UI
 function getCurrentFilters() {
+    // Try to get from state first
+    if (window.MetState) {
+        const stateFilters = window.MetState.getState('filters');
+        if (stateFilters) {
+            return { ...stateFilters };
+        }
+    }
+    
+    // Fallback to reading from UI
     const departmentId = document.getElementById('departmentSelect')?.value || '';
     const dateBegin = document.getElementById('dateBegin')?.value || '';
     const dateEnd = document.getElementById('dateEnd')?.value || '';
@@ -374,10 +481,93 @@ function getCurrentFilters() {
     return filters;
 }
 
+// FIXED: Update state when filters change
+function updateStateFromFilters() {
+    if (!window.MetState) return;
+    
+    const filters = getCurrentFilters();
+    window.MetState.setState('filters', filters);
+}
+
+// FIXED: Set up change handlers for filter dropdowns
+function setupFilterChangeHandlers() {
+    const departmentSelect = document.getElementById('departmentSelect');
+    const mediumSelect = document.getElementById('mediumSelect');
+    
+    if (departmentSelect) {
+        const departmentHandler = () => {
+            updateStateFromFilters();
+            triggerAdvancedSearch();
+        };
+        
+        if (window.MetEventManager) {
+            window.MetEventManager.addEventListener(departmentSelect, 'change', departmentHandler);
+        } else {
+            departmentSelect.addEventListener('change', departmentHandler);
+        }
+    }
+    
+    if (mediumSelect) {
+        const mediumHandler = () => {
+            updateStateFromFilters();
+            triggerAdvancedSearch();
+        };
+        
+        if (window.MetEventManager) {
+            window.MetEventManager.addEventListener(mediumSelect, 'change', mediumHandler);
+        } else {
+            mediumSelect.addEventListener('change', mediumHandler);
+        }
+    }
+}
+
+// Subscribe to state changes
+function subscribeToStateChanges() {
+    if (!window.MetState) return;
+    
+    // Subscribe to filter changes
+    window.MetState.subscribe('filters', (newFilters) => {
+        updateUIFromState(newFilters);
+    });
+}
+
+// Update UI from state
+function updateUIFromState(filters) {
+    if (!filters) return;
+    
+    // Update form fields
+    const fields = {
+        departmentSelect: filters.departmentId,
+        dateBegin: filters.dateBegin,
+        dateEnd: filters.dateEnd,
+        mediumSelect: filters.medium,
+        searchInput: filters.searchQuery,
+        geoLocationInput: filters.geoLocation,
+        excavationInput: filters.excavation,
+        titleInput: filters.title,
+        artistOrCultureCheckbox: filters.artistOrCulture,
+        isHighlightCheckbox: filters.isHighlight,
+        isPublicDomainCheckbox: filters.isPublicDomain
+    };
+    
+    for (const [id, value] of Object.entries(fields)) {
+        const element = document.getElementById(id);
+        if (element) {
+            if (element.type === 'checkbox') {
+                element.checked = !!value;
+            } else {
+                element.value = value || '';
+            }
+        }
+    }
+}
+
 // Make functions available globally
 window.MetFilters = {
     initFilters,
     getCurrentFilters,
     triggerAdvancedSearch,
-    connectAdvancedSearchFields
+    connectAdvancedSearchFields,
+    updateStateFromFilters,
+    subscribeToStateChanges
 };

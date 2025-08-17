@@ -476,6 +476,11 @@ function showConnectionStatus(isConnected) {
 function showLoading() {
     const artworkContainer = document.getElementById('artworkContainer');
     
+    // FIXED: Update state manager
+    if (window.MetState) {
+        window.MetState.setState('app.loading', true);
+    }
+    
     // Create loading element if it doesn't exist
     let loadingElement = document.querySelector('.loading');
     if (!loadingElement) {
@@ -519,6 +524,11 @@ function updateLoadingMessage(message) {
 
 // Hide loading state
 function hideLoading() {
+    // FIXED: Update state manager
+    if (window.MetState) {
+        window.MetState.setState('app.loading', false);
+    }
+    
     const loadingElement = document.querySelector('.loading');
     if (loadingElement) {
         loadingElement.style.display = 'none';

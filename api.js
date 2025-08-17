@@ -214,10 +214,13 @@ async function getRandomObjectIds(count = 20) {
 const searchCache = new Map();
 const SEARCH_CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
+<<<<<<< HEAD
 // Cache for object details
 const objectDetailsCache = new Map();
 const OBJECT_CACHE_DURATION = 30 * 60 * 1000; // 30 minutes
 
+=======
+>>>>>>> e11e5c042be9f74d6269222c66544f41a7623c22
 
 // Get a list of object IDs that match the filters
 async function searchObjects(filters = {}) {
@@ -282,6 +285,7 @@ async function searchObjects(filters = {}) {
 
 // Search artworks by text query
 async function searchArtworks(filters = {}) {
+<<<<<<< HEAD
     const { 
         searchQuery, 
         departmentId, 
@@ -298,6 +302,12 @@ async function searchArtworks(filters = {}) {
     
     // Use title search if provided, otherwise use general search query
     const query = title || searchQuery || '*';
+=======
+    const { searchQuery, departmentId, dateBegin, dateEnd, medium } = filters;
+    
+    // Default to wildcard search if no query provided
+    const query = searchQuery || '*';
+>>>>>>> e11e5c042be9f74d6269222c66544f41a7623c22
     
     // Create a cache key based on all filters
     const cacheKey = JSON.stringify(filters);
@@ -311,10 +321,14 @@ async function searchArtworks(filters = {}) {
     
     try {
         // Build the search query with default to prevent 502
+<<<<<<< HEAD
         let queryParams = `q=${encodeURIComponent(query)}`;
         
         // Always add hasImages=true unless explicitly searching for all
         queryParams += '&hasImages=true';
+=======
+        let queryParams = `q=${encodeURIComponent(query)}&hasImages=true`;
+>>>>>>> e11e5c042be9f74d6269222c66544f41a7623c22
         
         // Add additional filters
         if (departmentId) {
@@ -414,6 +428,7 @@ async function getObjectDetailsMultiple(objectIds, batchSize = 10) {
 function clearSearchCache() {
     searchCache.clear();
     console.log('Search cache cleared');
+<<<<<<< HEAD
 }
 
 // Clear object details cache
@@ -426,6 +441,8 @@ function clearObjectCache() {
 function clearAllCaches() {
     clearSearchCache();
     clearObjectCache();
+=======
+>>>>>>> e11e5c042be9f74d6269222c66544f41a7623c22
 }
 
 // Get details for a specific object by ID

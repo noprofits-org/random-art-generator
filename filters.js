@@ -142,11 +142,14 @@ function setupTextSearch() {
     searchButton.addEventListener('click', () => {
         const value = searchInput.value.trim();
         if (value) {
+<<<<<<< HEAD
             // Clear any pending debounce
             if (searchDebounceTimer) {
                 clearTimeout(searchDebounceTimer);
                 searchDebounceTimer = null;
             }
+=======
+>>>>>>> e11e5c042be9f74d6269222c66544f41a7623c22
             performSearch(value);
         }
     });
@@ -156,16 +159,20 @@ function setupTextSearch() {
         if (e.key === 'Enter') {
             const value = searchInput.value.trim();
             if (value) {
+<<<<<<< HEAD
                 // Clear any pending debounce
                 if (searchDebounceTimer) {
                     clearTimeout(searchDebounceTimer);
                     searchDebounceTimer = null;
                 }
+=======
+>>>>>>> e11e5c042be9f74d6269222c66544f41a7623c22
                 performSearch(value);
             }
         }
     });
     
+<<<<<<< HEAD
     // Handle input changes with debouncing
     searchInput.addEventListener('input', (e) => {
         const value = e.target.value.trim();
@@ -175,11 +182,17 @@ function setupTextSearch() {
             clearTimeout(searchDebounceTimer);
         }
         
+=======
+    // Handle input changes (for clearing search)
+    searchInput.addEventListener('input', (e) => {
+        const value = e.target.value.trim();
+>>>>>>> e11e5c042be9f74d6269222c66544f41a7623c22
         if (!value) {
             // Clear search when input is empty
             if (window.MetUI && window.MetUI.clearSearch) {
                 window.MetUI.clearSearch();
             }
+<<<<<<< HEAD
             searchDebounceTimer = null;
         } else {
             // Set up debounce timer for automatic search
@@ -218,7 +231,21 @@ function setupAdvancedSearch() {
             ? '<i class="fas fa-cog"></i> Advanced Search'
             : '<i class="fas fa-cog"></i> Hide Advanced Search';
     });
+=======
+        }
+    });
 }
+
+// Perform search
+function performSearch(query) {
+    console.log('Search query:', query);
+    // Trigger search through UI
+    if (window.MetUI && window.MetUI.triggerSearch) {
+        window.MetUI.triggerSearch(query, 'quick');
+    }
+>>>>>>> e11e5c042be9f74d6269222c66544f41a7623c22
+}
+
 
 // Get the current filters from the UI
 function getCurrentFilters() {
@@ -228,6 +255,7 @@ function getCurrentFilters() {
     const medium = document.getElementById('mediumSelect')?.value || '';
     const searchQuery = document.getElementById('searchInput')?.value.trim() || '';
     
+<<<<<<< HEAD
     // Advanced search fields
     const geoLocation = document.getElementById('geoLocationInput')?.value.trim() || '';
     const excavation = document.getElementById('excavationInput')?.value.trim() || '';
@@ -235,6 +263,9 @@ function getCurrentFilters() {
     const artistOrCulture = document.getElementById('artistOrCultureCheckbox')?.checked || false;
     const isHighlight = document.getElementById('isHighlightCheckbox')?.checked || false;
     const isPublicDomain = document.getElementById('isPublicDomainCheckbox')?.checked || false;
+=======
+    // No more object type filters in simplified interface
+>>>>>>> e11e5c042be9f74d6269222c66544f41a7623c22
     
     // Build the filters object
     const filters = {};
@@ -244,12 +275,15 @@ function getCurrentFilters() {
     if (dateEnd) filters.dateEnd = dateEnd;
     if (medium) filters.medium = medium;
     if (searchQuery) filters.searchQuery = searchQuery;
+<<<<<<< HEAD
     if (geoLocation) filters.geoLocation = geoLocation;
     if (excavation) filters.excavation = excavation;
     if (title) filters.title = title;
     if (artistOrCulture) filters.artistOrCulture = artistOrCulture;
     if (isHighlight) filters.isHighlight = isHighlight;
     if (isPublicDomain !== undefined) filters.isPublicDomain = isPublicDomain;
+=======
+>>>>>>> e11e5c042be9f74d6269222c66544f41a7623c22
     
     return filters;
 }

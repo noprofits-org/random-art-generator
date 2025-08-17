@@ -221,14 +221,18 @@ async function addToFavorites(artwork) {
                 
                 // Notify service worker to cache the image
                 if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-                    navigator.serviceWorker.controller.postMessage({
-                        type: 'CACHE_FAVORITE',
-                        objectID: artwork.objectID,
-                        imageUrl: artwork.primaryImage
-                    });
+                    try {
+                        navigator.serviceWorker.controller.postMessage({
+                            type: 'CACHE_FAVORITE',
+                            objectID: artwork.objectID,
+                            imageUrl: artwork.primaryImage
+                        });
+                    } catch (error) {
+                        console.warn('Failed to notify service worker:', error);
+                    }
                 }
                 
-                // Update UI if callback exists
+                // FIXED: Defensive check for UI update
                 if (window.MetUI && window.MetUI.updateFavoriteButton) {
                     window.MetUI.updateFavoriteButton(artwork.objectID, true);
                 }

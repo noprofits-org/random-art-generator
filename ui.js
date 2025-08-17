@@ -7,6 +7,12 @@ function initUI() {
     const controlsDrawer = document.getElementById('controlsDrawer');
     const contentArea = document.getElementById('contentArea');
 
+    // FIXED: Add defensive checks for all DOM elements
+    if (!controlsDrawer) {
+        console.error('Controls drawer element not found');
+        return;
+    }
+
     // Check if mobile
     const isMobile = window.innerWidth <= 768;
 
@@ -14,37 +20,70 @@ function initUI() {
         initMobileUI();
     } else {
         // Desktop drawer toggle
-        toggleDrawerButton.addEventListener('click', () => {
-            controlsDrawer.classList.toggle('collapsed');
+        if (toggleDrawerButton) {
+            const toggleHandler = () => {
+                controlsDrawer.classList.toggle('collapsed');
+                
+                // Check if drawer is now collapsed
+                const isCollapsed = controlsDrawer.classList.contains('collapsed');
+                
+                // Update the button icon
+                const iconElement = toggleDrawerButton.querySelector('i');
+                if (iconElement) {
+                    if (isCollapsed) {
+                        iconElement.classList.remove('fa-chevron-left');
+                        iconElement.classList.add('fa-chevron-right');
+                    } else {
+                        iconElement.classList.remove('fa-chevron-right');
+                        iconElement.classList.add('fa-chevron-left');
+                    }
+                }
+            };
             
-            // Check if drawer is now collapsed
-            const isCollapsed = controlsDrawer.classList.contains('collapsed');
-            
-            // Update the button icon
-            const iconElement = toggleDrawerButton.querySelector('i');
-            if (isCollapsed) {
-                iconElement.classList.remove('fa-chevron-left');
-                iconElement.classList.add('fa-chevron-right');
+            // FIXED: Use EventManager for toggle button
+            if (window.MetEventManager) {
+                window.MetEventManager.addEventListener(toggleDrawerButton, 'click', toggleHandler);
             } else {
-                iconElement.classList.remove('fa-chevron-right');
-                iconElement.classList.add('fa-chevron-left');
+                toggleDrawerButton.addEventListener('click', toggleHandler);
             }
-        });
+        } else {
+            console.warn('Toggle drawer button not found');
+        }
     }
 
     // Handle window resize for responsive behavior
     let wasMobile = isMobile;
-    window.addEventListener('resize', () => {
-        const isNowMobile = window.innerWidth <= 768;
-        if (wasMobile !== isNowMobile) {
-            wasMobile = isNowMobile;
-            if (isNowMobile) {
-                initMobileUI();
-            } else {
-                removeMobileUI();
+    
+    // FIXED: Debounced resize handler using EventManager
+    const resizeHandler = window.MetUtils ? 
+        window.MetUtils.debounce(() => {
+            const isNowMobile = window.innerWidth <= 768;
+            if (wasMobile !== isNowMobile) {
+                wasMobile = isNowMobile;
+                if (isNowMobile) {
+                    initMobileUI();
+                } else {
+                    removeMobileUI();
+                }
             }
-        }
-    });
+        }, 250) :
+        () => {
+            const isNowMobile = window.innerWidth <= 768;
+            if (wasMobile !== isNowMobile) {
+                wasMobile = isNowMobile;
+                if (isNowMobile) {
+                    initMobileUI();
+                } else {
+                    removeMobileUI();
+                }
+            }
+        };
+    
+    if (window.MetEventManager) {
+        window.MetEventManager.addEventListener(window, 'resize', resizeHandler);
+    } else {
+        window.addEventListener('resize', resizeHandler);
+    }
     
     // Add a status indicator to the UI
     addStatusIndicator();
@@ -59,23 +98,40 @@ function initMobileUI() {
     const artworkInfo = document.getElementById('artworkInfo');
     const artworkContainer = document.getElementById('artworkContainer');
     
+    // FIXED: Add defensive checks and use EventManager
     // Mobile menu button
     if (mobileMenuButton) {
-        mobileMenuButton.addEventListener('click', openMobileDrawer);
+        if (window.MetEventManager) {
+            window.MetEventManager.addEventListener(mobileMenuButton, 'click', openMobileDrawer);
+        } else {
+            mobileMenuButton.addEventListener('click', openMobileDrawer);
+        }
+    } else {
+        console.warn('Mobile menu button not found');
     }
     
     // Close drawer button
     if (closeDrawer) {
-        closeDrawer.addEventListener('click', closeMobileDrawer);
+        if (window.MetEventManager) {
+            window.MetEventManager.addEventListener(closeDrawer, 'click', closeMobileDrawer);
+        } else {
+            closeDrawer.addEventListener('click', closeMobileDrawer);
+        }
     }
     
     // Overlay click
     if (mobileOverlay) {
-        mobileOverlay.addEventListener('click', closeMobileDrawer);
+        if (window.MetEventManager) {
+            window.MetEventManager.addEventListener(mobileOverlay, 'click', closeMobileDrawer);
+        } else {
+            mobileOverlay.addEventListener('click', closeMobileDrawer);
+        }
     }
     
     // Handle swipe down on drawer
-    initDrawerSwipe();
+    if (controlsDrawer) {
+        initDrawerSwipe();
+    }
     
     // Handle collapsible artwork info
     if (artworkInfo) {
@@ -90,35 +146,72 @@ function initMobileUI() {
 
 // Remove mobile UI event listeners
 function removeMobileUI() {
+    // FIXED: Enhanced cleanup with null checks and event manager
     const controlsDrawer = document.getElementById('controlsDrawer');
     const info = document.getElementById('artworkInfo');
     const container = document.getElementById('artworkContainer');
     
-    // Clean up event handlers
+    // Use EventManager to clean up all handlers for these elements
+    if (window.MetEventManager) {
+        window.MetEventManager.cleanupElement(controlsDrawer);
+        window.MetEventManager.cleanupElement(info);
+        window.MetEventManager.cleanupElement(container);
+        
+        // Also cleanup mobile-specific elements
+        const mobileMenuButton = document.getElementById('mobileMenuButton');
+        const mobileOverlay = document.getElementById('mobileOverlay');
+        const closeDrawer = document.getElementById('closeDrawer');
+        
+        window.MetEventManager.cleanupElement(mobileMenuButton);
+        window.MetEventManager.cleanupElement(mobileOverlay);
+        window.MetEventManager.cleanupElement(closeDrawer);
+    }
+    
+    // Clean up manual handlers if they exist
     const handle = controlsDrawer?.querySelector('.mobile-drawer-handle');
     
     // Remove drawer swipe handlers
     if (handle && handle._swipeHandlers) {
-        handle.removeEventListener('touchstart', handle._swipeHandlers.handleStart);
-        handle.removeEventListener('touchmove', handle._swipeHandlers.handleMove);
-        handle.removeEventListener('touchend', handle._swipeHandlers.handleEnd);
-        handle.removeEventListener('mousedown', handle._swipeHandlers.handleStart);
+        try {
+            handle.removeEventListener('touchstart', handle._swipeHandlers.handleStart, { passive: true });
+            handle.removeEventListener('touchmove', handle._swipeHandlers.handleMove, { passive: true });
+            handle.removeEventListener('touchend', handle._swipeHandlers.handleEnd);
+            handle.removeEventListener('mousedown', handle._swipeHandlers.handleStart);
+            
+            // Also remove document-level mouse handlers
+            if (handle._swipeHandlers.handleMove) {
+                document.removeEventListener('mousemove', handle._swipeHandlers.handleMove);
+            }
+            if (handle._swipeHandlers.handleEnd) {
+                document.removeEventListener('mouseup', handle._swipeHandlers.handleEnd);
+            }
+        } catch (error) {
+            console.error('Error removing drawer handlers:', error);
+        }
         delete handle._swipeHandlers;
     }
     
     // Remove info swipe handlers
     if (info && info._swipeHandlers) {
-        info.removeEventListener('touchstart', info._swipeHandlers.handleStart);
-        info.removeEventListener('touchmove', info._swipeHandlers.handleMove);
-        info.removeEventListener('touchend', info._swipeHandlers.handleEnd);
+        try {
+            info.removeEventListener('touchstart', info._swipeHandlers.handleStart, { passive: true });
+            info.removeEventListener('touchmove', info._swipeHandlers.handleMove, { passive: true });
+            info.removeEventListener('touchend', info._swipeHandlers.handleEnd);
+        } catch (error) {
+            console.error('Error removing info handlers:', error);
+        }
         delete info._swipeHandlers;
     }
     
     // Remove container swipe handlers
     if (container && container._swipeHandlers) {
-        container.removeEventListener('touchstart', container._swipeHandlers.handleTouchStart);
-        container.removeEventListener('touchmove', container._swipeHandlers.handleTouchMove);
-        container.removeEventListener('touchend', container._swipeHandlers.handleTouchEnd);
+        try {
+            container.removeEventListener('touchstart', container._swipeHandlers.handleTouchStart, { passive: true });
+            container.removeEventListener('touchmove', container._swipeHandlers.handleTouchMove, { passive: true });
+            container.removeEventListener('touchend', container._swipeHandlers.handleTouchEnd, { passive: true });
+        } catch (error) {
+            console.error('Error removing container handlers:', error);
+        }
         delete container._swipeHandlers;
     }
     
@@ -152,7 +245,14 @@ function closeMobileDrawer() {
 // Initialize drawer swipe gestures
 function initDrawerSwipe() {
     const drawer = document.getElementById('controlsDrawer');
-    const handle = drawer.querySelector('.mobile-drawer-handle');
+    const handle = drawer?.querySelector('.mobile-drawer-handle');
+    
+    // FIXED: Add null checks and proper cleanup tracking
+    if (!drawer || !handle) {
+        console.warn('Drawer elements not found for swipe initialization');
+        return;
+    }
+    
     let startY = 0;
     let currentY = 0;
     let isDragging = false;
@@ -188,15 +288,33 @@ function initDrawerSwipe() {
         }
     };
     
-    // Touch events
-    handle.addEventListener('touchstart', handleStart, { passive: true });
-    handle.addEventListener('touchmove', handleMove, { passive: true });
-    handle.addEventListener('touchend', handleEnd);
+    // Store handlers for cleanup
+    handle._swipeHandlers = {
+        handleStart,
+        handleMove,
+        handleEnd
+    };
     
-    // Mouse events for testing
-    handle.addEventListener('mousedown', handleStart);
-    document.addEventListener('mousemove', handleMove);
-    document.addEventListener('mouseup', handleEnd);
+    // FIXED: Use EventManager for automatic cleanup tracking
+    if (window.MetEventManager) {
+        // Touch events
+        window.MetEventManager.addEventListener(handle, 'touchstart', handleStart, { passive: true });
+        window.MetEventManager.addEventListener(handle, 'touchmove', handleMove, { passive: true });
+        window.MetEventManager.addEventListener(handle, 'touchend', handleEnd);
+        
+        // Mouse events for testing
+        window.MetEventManager.addEventListener(handle, 'mousedown', handleStart);
+        window.MetEventManager.addEventListener(document, 'mousemove', handleMove);
+        window.MetEventManager.addEventListener(document, 'mouseup', handleEnd);
+    } else {
+        // Fallback to regular event listeners
+        handle.addEventListener('touchstart', handleStart, { passive: true });
+        handle.addEventListener('touchmove', handleMove, { passive: true });
+        handle.addEventListener('touchend', handleEnd);
+        handle.addEventListener('mousedown', handleStart);
+        document.addEventListener('mousemove', handleMove);
+        document.addEventListener('mouseup', handleEnd);
+    }
 }
 
 // Initialize artwork info swipe
@@ -283,11 +401,26 @@ function initArtworkSwipeGestures() {
 
 // Add a status indicator to the bottom of the screen
 function addStatusIndicator() {
-    const statusIndicator = document.createElement('div');
-    statusIndicator.id = 'statusIndicator';
-    statusIndicator.className = 'status-indicator';
-    statusIndicator.innerHTML = '<span class="status-dot"></span><span class="status-text">Ready</span>';
-    document.body.appendChild(statusIndicator);
+    // FIXED: Check if status indicator already exists
+    if (document.getElementById('statusIndicator')) {
+        console.log('Status indicator already exists');
+        return;
+    }
+    
+    try {
+        const statusIndicator = document.createElement('div');
+        statusIndicator.id = 'statusIndicator';
+        statusIndicator.className = 'status-indicator';
+        statusIndicator.innerHTML = '<span class="status-dot"></span><span class="status-text">Ready</span>';
+        
+        if (document.body) {
+            document.body.appendChild(statusIndicator);
+        } else {
+            console.error('Document body not available for status indicator');
+        }
+    } catch (error) {
+        console.error('Error creating status indicator:', error);
+    }
 }
 
 // Update the status indicator
@@ -623,6 +756,13 @@ async function showOfflineCollection() {
     }
 }
 
+// FIXED: Add state management for modal operations
+let favoritesModalState = {
+    isOpen: false,
+    isLoading: false,
+    isClearing: false
+};
+
 // Initialize favorites view functionality
 function initFavoritesView() {
     const viewFavoritesButton = document.getElementById('viewFavoritesButton');
@@ -630,53 +770,120 @@ function initFavoritesView() {
     const closeFavoritesModal = document.getElementById('closeFavoritesModal');
     const clearFavoritesButton = document.getElementById('clearFavoritesButton');
     
+    // FIXED: Add null checks for all elements
+    if (!viewFavoritesButton || !favoritesModal) {
+        console.warn('Favorites elements not found');
+        return;
+    }
+    
+    // FIXED: Debounced show modal function to prevent rapid clicks
+    const debouncedShowModal = window.MetUtils ? 
+        window.MetUtils.debounce(async () => {
+            if (!favoritesModalState.isOpen && !favoritesModalState.isLoading) {
+                await showFavoritesModal();
+            }
+        }, 300) : 
+        async () => await showFavoritesModal();
+    
     // View favorites button click handler
-    if (viewFavoritesButton) {
-        viewFavoritesButton.addEventListener('click', async () => {
-            await showFavoritesModal();
+    if (window.MetEventManager) {
+        window.MetEventManager.addEventListener(viewFavoritesButton, 'click', async (e) => {
+            e.preventDefault();
+            await debouncedShowModal();
+        });
+    } else {
+        viewFavoritesButton.addEventListener('click', async (e) => {
+            e.preventDefault();
+            await debouncedShowModal();
         });
     }
     
     // Close modal handler
     if (closeFavoritesModal) {
-        closeFavoritesModal.addEventListener('click', () => {
-            hideFavoritesModal();
-        });
+        const closeHandler = () => {
+            if (!favoritesModalState.isLoading) {
+                hideFavoritesModal();
+            }
+        };
+        
+        if (window.MetEventManager) {
+            window.MetEventManager.addEventListener(closeFavoritesModal, 'click', closeHandler);
+        } else {
+            closeFavoritesModal.addEventListener('click', closeHandler);
+        }
     }
     
     // Close modal on background click
-    if (favoritesModal) {
-        favoritesModal.addEventListener('click', (e) => {
-            if (e.target === favoritesModal) {
-                hideFavoritesModal();
-            }
-        });
+    const backgroundClickHandler = (e) => {
+        if (e.target === favoritesModal && !favoritesModalState.isLoading) {
+            hideFavoritesModal();
+        }
+    };
+    
+    if (window.MetEventManager) {
+        window.MetEventManager.addEventListener(favoritesModal, 'click', backgroundClickHandler);
+    } else {
+        favoritesModal.addEventListener('click', backgroundClickHandler);
     }
     
-    // Clear all favorites handler
+    // Clear all favorites handler with debouncing
     if (clearFavoritesButton) {
-        clearFavoritesButton.addEventListener('click', async () => {
-            if (confirm('Are you sure you want to clear all favorites? This cannot be undone.')) {
-                await clearAllFavorites();
-            }
-        });
+        const clearHandler = window.MetUtils ? 
+            window.MetUtils.debounce(async () => {
+                if (!favoritesModalState.isClearing) {
+                    if (confirm('Are you sure you want to clear all favorites? This cannot be undone.')) {
+                        await clearAllFavorites();
+                    }
+                }
+            }, 500) :
+            async () => {
+                if (!favoritesModalState.isClearing && confirm('Are you sure you want to clear all favorites? This cannot be undone.')) {
+                    await clearAllFavorites();
+                }
+            };
+        
+        if (window.MetEventManager) {
+            window.MetEventManager.addEventListener(clearFavoritesButton, 'click', clearHandler);
+        } else {
+            clearFavoritesButton.addEventListener('click', clearHandler);
+        }
     }
     
     // Close modal on Escape key
-    document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape' && favoritesModal && favoritesModal.classList.contains('show')) {
+    const escapeHandler = (e) => {
+        if (e.key === 'Escape' && favoritesModalState.isOpen && !favoritesModalState.isLoading) {
             hideFavoritesModal();
         }
-    });
+    };
+    
+    if (window.MetEventManager) {
+        window.MetEventManager.addEventListener(document, 'keydown', escapeHandler);
+    } else {
+        document.addEventListener('keydown', escapeHandler);
+    }
 }
 
 // Show favorites modal
 async function showFavoritesModal() {
+    // FIXED: Check modal state to prevent multiple opens
+    if (favoritesModalState.isOpen || favoritesModalState.isLoading) {
+        console.log('Favorites modal already open or loading');
+        return;
+    }
+    
     const favoritesModal = document.getElementById('favoritesModal');
     const favoritesGrid = document.getElementById('favoritesGrid');
     const favoritesCount = document.getElementById('favoritesCount');
     
-    if (!favoritesModal || !favoritesGrid || !window.MetFavorites) return;
+    // FIXED: Add null checks
+    if (!favoritesModal || !favoritesGrid || !window.MetFavorites) {
+        console.error('Required favorites elements not found');
+        return;
+    }
+    
+    // Update state
+    favoritesModalState.isOpen = true;
+    favoritesModalState.isLoading = true;
     
     // Show modal
     favoritesModal.classList.add('show');
@@ -709,28 +916,60 @@ async function showFavoritesModal() {
             // Add click handlers to favorite items
             const favoriteItems = favoritesGrid.querySelectorAll('.favorite-item');
             favoriteItems.forEach(item => {
-                item.addEventListener('click', async () => {
+                // FIXED: Use EventManager for click handlers
+                const clickHandler = async () => {
                     const objectID = item.dataset.objectId;
                     await displayFavoriteFromModal(objectID);
-                });
+                };
+                
+                if (window.MetEventManager) {
+                    window.MetEventManager.addEventListener(item, 'click', clickHandler);
+                } else {
+                    item.addEventListener('click', clickHandler);
+                }
             });
         }
+        
+        // Update state - loading complete
+        favoritesModalState.isLoading = false;
     } catch (error) {
         console.error('Error loading favorites:', error);
         favoritesGrid.innerHTML = `
             <div class="error-message">
                 <p>Error loading favorites</p>
+                <p class="error-details">${error.message || 'Please try again'}</p>
             </div>
         `;
+        
+        // Update state - loading failed
+        favoritesModalState.isLoading = false;
     }
 }
 
 // Hide favorites modal
 function hideFavoritesModal() {
+    // FIXED: Check state before closing
+    if (!favoritesModalState.isOpen) {
+        return;
+    }
+    
     const favoritesModal = document.getElementById('favoritesModal');
     if (favoritesModal) {
         favoritesModal.classList.remove('show');
+        
+        // Clean up event handlers for favorite items
+        if (window.MetEventManager) {
+            const favoritesGrid = document.getElementById('favoritesGrid');
+            if (favoritesGrid) {
+                const items = favoritesGrid.querySelectorAll('.favorite-item');
+                items.forEach(item => window.MetEventManager.cleanupElement(item));
+            }
+        }
     }
+    
+    // Update state
+    favoritesModalState.isOpen = false;
+    favoritesModalState.isLoading = false;
 }
 
 // Create HTML for a favorite item in the grid
@@ -776,15 +1015,42 @@ async function displayFavoriteFromModal(objectID) {
 
 // Clear all favorites
 async function clearAllFavorites() {
-    if (!window.MetFavorites) return;
+    // FIXED: Check state to prevent concurrent operations
+    if (favoritesModalState.isClearing || !window.MetFavorites) {
+        return;
+    }
+    
+    // Update state
+    favoritesModalState.isClearing = true;
+    
+    // Disable clear button while clearing
+    const clearButton = document.getElementById('clearFavoritesButton');
+    if (clearButton) {
+        clearButton.disabled = true;
+        clearButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Clearing...';
+    }
     
     try {
         await window.MetFavorites.clearAllFavorites();
         
         // Update the modal if it's open
-        const favoritesModal = document.getElementById('favoritesModal');
-        if (favoritesModal && favoritesModal.classList.contains('show')) {
-            await showFavoritesModal();
+        if (favoritesModalState.isOpen) {
+            // Refresh the modal content
+            const favoritesGrid = document.getElementById('favoritesGrid');
+            const favoritesCount = document.getElementById('favoritesCount');
+            
+            if (favoritesGrid) {
+                favoritesGrid.innerHTML = `
+                    <div class="favorites-empty">
+                        <i class="fas fa-heart-broken"></i>
+                        <p>All favorites have been cleared</p>
+                    </div>
+                `;
+            }
+            
+            if (favoritesCount) {
+                favoritesCount.textContent = 'No favorites';
+            }
         }
         
         // Update status
@@ -792,6 +1058,14 @@ async function clearAllFavorites() {
     } catch (error) {
         console.error('Error clearing favorites:', error);
         updateStatus('Error clearing favorites', 'error');
+    } finally {
+        // Reset state and button
+        favoritesModalState.isClearing = false;
+        
+        if (clearButton) {
+            clearButton.disabled = false;
+            clearButton.innerHTML = '<i class="fas fa-trash"></i> Clear All';
+        }
     }
 }
 

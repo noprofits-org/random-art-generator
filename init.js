@@ -321,10 +321,36 @@ const MetInit = (() => {
         }
     }
 
+    // FIXED: Add cleanup function for proper teardown
+    function cleanup() {
+        console.log('[Init] Starting application cleanup...');
+        
+        // Clean up event handlers
+        if (window.MetEventManager) {
+            window.MetEventManager.cleanup();
+        }
+        
+        // Clear all caches
+        if (window.MetAPI) {
+            window.MetAPI.clearAllCaches && window.MetAPI.clearAllCaches();
+        }
+        
+        // Reset initialization state
+        initialized = false;
+        initPromise = null;
+        initCallbacks.length = 0;
+        
+        // Reset module status
+        Object.keys(moduleStatus).forEach(key => moduleStatus[key] = false);
+        
+        console.log('[Init] Cleanup complete');
+    }
+    
     // Public API
     return {
         initialize,
         onReady,
+        cleanup,
         isReady: () => initialized,
         getStatus: () => ({ initialized, moduleStatus })
     };
@@ -340,3 +366,10 @@ if (document.readyState === 'loading') {
     // DOM already loaded
     MetInit.initialize();
 }
+
+// FIXED: Add cleanup on page unload
+window.addEventListener('beforeunload', () => {
+    if (window.MetInit && window.MetInit.isReady()) {
+        window.MetInit.cleanup();
+    }
+}, { once: true });

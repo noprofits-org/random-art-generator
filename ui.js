@@ -79,6 +79,9 @@ function initUI() {
             }
         };
     
+    // Store resize handler for cleanup
+    window._resizeHandler = resizeHandler;
+    
     if (window.MetEventManager) {
         window.MetEventManager.addEventListener(window, 'resize', resizeHandler);
     } else {
@@ -320,6 +323,8 @@ function initDrawerSwipe() {
 // Initialize artwork info swipe
 function initArtworkInfoSwipe() {
     const info = document.getElementById('artworkInfo');
+    if (!info) return;
+    
     let startY = 0;
     let currentY = 0;
     let isDragging = false;
@@ -357,25 +362,41 @@ function initArtworkInfoSwipe() {
         info.style.transform = '';
     };
     
-    info.addEventListener('touchstart', handleStart, { passive: true });
-    info.addEventListener('touchmove', handleMove, { passive: true });
-    info.addEventListener('touchend', handleEnd);
+    // Store handlers for cleanup
+    info._swipeHandlers = {
+        handleStart,
+        handleMove,
+        handleEnd
+    };
+    
+    // FIXED: Use EventManager for automatic cleanup tracking
+    if (window.MetEventManager) {
+        window.MetEventManager.addEventListener(info, 'touchstart', handleStart, { passive: true });
+        window.MetEventManager.addEventListener(info, 'touchmove', handleMove, { passive: true });
+        window.MetEventManager.addEventListener(info, 'touchend', handleEnd);
+    } else {
+        info.addEventListener('touchstart', handleStart, { passive: true });
+        info.addEventListener('touchmove', handleMove, { passive: true });
+        info.addEventListener('touchend', handleEnd);
+    }
 }
 
 // Initialize artwork swipe gestures
 function initArtworkSwipeGestures() {
     const container = document.getElementById('artworkContainer');
+    if (!container) return;
+    
     let startX = 0;
     let startY = 0;
     let endX = 0;
     let endY = 0;
     
-    container.addEventListener('touchstart', (e) => {
+    const handleTouchStart = (e) => {
         startX = e.touches[0].clientX;
         startY = e.touches[0].clientY;
-    }, { passive: true });
+    };
     
-    container.addEventListener('touchend', (e) => {
+    const handleTouchEnd = (e) => {
         endX = e.changedTouches[0].clientX;
         endY = e.changedTouches[0].clientY;
         
@@ -396,7 +417,22 @@ function initArtworkSwipeGestures() {
                 if (randomButton) randomButton.click();
             }
         }
-    }, { passive: true });
+    };
+    
+    // Store handlers for cleanup
+    container._swipeHandlers = {
+        handleTouchStart,
+        handleTouchEnd
+    };
+    
+    // FIXED: Use EventManager for automatic cleanup tracking
+    if (window.MetEventManager) {
+        window.MetEventManager.addEventListener(container, 'touchstart', handleTouchStart, { passive: true });
+        window.MetEventManager.addEventListener(container, 'touchend', handleTouchEnd, { passive: true });
+    } else {
+        container.addEventListener('touchstart', handleTouchStart, { passive: true });
+        container.addEventListener('touchend', handleTouchEnd, { passive: true });
+    }
 }
 
 // Add a status indicator to the bottom of the screen
@@ -651,16 +687,24 @@ function initOfflineDetection() {
     // Check initial online status
     updateOnlineStatus(navigator.onLine);
     
-    // Listen for online/offline events
-    window.addEventListener('online', () => {
+    // Create handlers and store them for cleanup
+    const onlineHandler = () => {
         window.MetLogger?.log('[UI] App is online');
         updateOnlineStatus(true);
-    });
+    };
     
-    window.addEventListener('offline', () => {
+    const offlineHandler = () => {
         window.MetLogger?.log('[UI] App is offline');
         updateOnlineStatus(false);
-    });
+    };
+    
+    // Store handlers globally for cleanup
+    window._onlineHandler = onlineHandler;
+    window._offlineHandler = offlineHandler;
+    
+    // Listen for online/offline events
+    window.addEventListener('online', onlineHandler);
+    window.addEventListener('offline', offlineHandler);
     
     // Check for offline mode parameter
     const urlParams = new URLSearchParams(window.location.search);
@@ -1259,3 +1303,64 @@ window.initUI = initUI;
 window.initOfflineDetection = initOfflineDetection;
 window.initFavoritesView = initFavoritesView;
 // REMOVED: window.initSearchUI = initSearchUI;
+
+// FIXED: Add comprehensive cleanup function
+function destroyUI() {
+    window.MetLogger?.log('Starting UI cleanup...');
+    
+    // Clean up all mobile UI handlers
+    removeMobileUI();
+    
+    // Clean up resize handler
+    if (window._resizeHandler) {
+        window.removeEventListener('resize', window._resizeHandler);
+        window._resizeHandler = null;
+    }
+    
+    // Clean up offline detection handlers
+    if (window._onlineHandler) {
+        window.removeEventListener('online', window._onlineHandler);
+        window._onlineHandler = null;
+    }
+    if (window._offlineHandler) {
+        window.removeEventListener('offline', window._offlineHandler);
+        window._offlineHandler = null;
+    }
+    
+    // Clean up any remaining event listeners using EventManager
+    if (window.MetEventManager) {
+        // Clean up common UI elements
+        const elementsToClean = [
+            'randomArtButton',
+            'viewFavoritesButton',
+            'closeFavoritesModal',
+            'clearFavoritesButton',
+            'toggleDrawer',
+            'mobileMenuButton',
+            'mobileOverlay',
+            'closeDrawer',
+            'artworkContainer',
+            'artworkInfo',
+            'controlsDrawer'
+        ];
+        
+        elementsToClean.forEach(id => {
+            const element = document.getElementById(id);
+            if (element) {
+                window.MetEventManager.cleanupElement(element);
+            }
+        });
+    }
+    
+    // Reset any UI state
+    if (favoritesModalState) {
+        favoritesModalState.isOpen = false;
+        favoritesModalState.isLoading = false;
+        favoritesModalState.isClearing = false;
+    }
+    
+    window.MetLogger?.log('UI cleanup complete');
+}
+
+// Add destroy function to global UI object
+window.MetUI.destroy = destroyUI;

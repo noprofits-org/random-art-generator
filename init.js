@@ -327,14 +327,35 @@ const MetInit = (() => {
     function cleanup() {
         window.MetLogger?.log('[Init] Starting application cleanup...');
         
+        // Clean up UI handlers
+        if (window.MetUI && window.MetUI.destroy) {
+            window.MetUI.destroy();
+        }
+        
         // Clean up event handlers
         if (window.MetEventManager) {
             window.MetEventManager.cleanup();
         }
         
+        // Clean up favorites
+        if (window.MetFavorites && window.MetFavorites.cleanup) {
+            window.MetFavorites.cleanup();
+        }
+        
         // Clear all caches
         if (window.MetAPI) {
             window.MetAPI.clearAllCaches && window.MetAPI.clearAllCaches();
+        }
+        
+        // Clean up state manager
+        if (window.MetState && window.MetState.reset) {
+            window.MetState.reset();
+        }
+        
+        // Clean up any virtual scrollers
+        if (window.virtualScroller) {
+            window.virtualScroller.destroy();
+            window.virtualScroller = null;
         }
         
         // Reset initialization state
@@ -369,9 +390,16 @@ if (document.readyState === 'loading') {
     MetInit.initialize();
 }
 
-// FIXED: Add cleanup on page unload
+// FIXED: Add global cleanup on page unload
 window.addEventListener('beforeunload', () => {
-    if (window.MetInit && window.MetInit.isReady()) {
+    if (window.MetInit && window.MetInit.cleanup) {
         window.MetInit.cleanup();
     }
-}, { once: true });
+});
+
+// Also handle pagehide for mobile browsers
+window.addEventListener('pagehide', () => {
+    if (window.MetInit && window.MetInit.cleanup) {
+        window.MetInit.cleanup();
+    }
+});

@@ -470,6 +470,20 @@ for (const [name, fn] of Object.entries(originalFunctions)) {
     };
 }
 
+// FIXED: Add cleanup function
+function cleanup() {
+    window.MetLogger?.log('Cleaning up favorites module...');
+    
+    // Close database connection
+    if (db) {
+        db.close();
+        db = null;
+    }
+    
+    // Reset initialization state
+    favoritesDBInitialized = false;
+}
+
 // Make functions available globally
 window.MetFavorites = {
     initFavoritesDB,
@@ -480,5 +494,6 @@ window.MetFavorites = {
     getFavorite,
     getFavoritesCount,
     clearAllFavorites,
-    toggleFavorite
+    toggleFavorite,
+    cleanup
 };

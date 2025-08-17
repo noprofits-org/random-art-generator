@@ -60,38 +60,103 @@ async function displayArtwork(artwork) {
         };
         
         img.onerror = function() {
-            // Try direct URL as fallback
-            if (img.dataset.fallbackTried !== 'true') {
-                console.log('Proxy failed, trying direct URL');
-                img.dataset.fallbackTried = 'true';
-                img.src = artwork.primaryImage;
+            // FIXED: Removed direct URL fallback that won't work due to CORS
+            // Instead, try alternative proxy or show better placeholder
+            loadingIndicator.remove();
+            
+            // Check if we have a small image as fallback
+            if (artwork.primaryImageSmall && artwork.primaryImageSmall !== highResImg && !img.dataset.smallImageTried) {
+                console.log('High-res proxy failed, trying small image through proxy');
+                img.dataset.smallImageTried = 'true';
+                const smallProxyUrl = window.MetAPI.loadArtworkImage(artwork.primaryImageSmall);
+                img.src = smallProxyUrl;
                 return;
             }
             
-            // Both proxy and direct failed
-            loadingIndicator.remove();
+            // All image loading attempts failed - show enhanced placeholder
             imgContainer.innerHTML = `
-                <div class="artwork-placeholder">
-                    <i class="fas fa-exclamation-circle"></i>
-                    <p>Image failed to load</p>
-                    <button class="retry-button" id="retryImageBtn">Retry Image</button>
+                <div class="artwork-placeholder artwork-placeholder-error">
+                    <div class="placeholder-icon">
+                        <i class="fas fa-image"></i>
+                        <i class="fas fa-exclamation-circle error-badge"></i>
+                    </div>
+                    <h3>Image Unavailable</h3>
+                    <p>We couldn't load the image for this artwork.</p>
+                    <p class="error-details">This may be due to network issues or proxy limitations.</p>
+                    <div class="placeholder-actions">
+                        <button class="retry-button" id="retryImageBtn">
+                            <i class="fas fa-redo"></i> Try Again
+                        </button>
+                        <a href="${artwork.objectURL}" target="_blank" class="view-met-link">
+                            <i class="fas fa-external-link-alt"></i> View on Met Website
+                        </a>
+                    </div>
                 </div>
             `;
             
-            // Add retry button functionality
+            // Add retry button functionality with exponential backoff
             const retryBtn = imgContainer.querySelector('#retryImageBtn');
             if (retryBtn) {
-                retryBtn.addEventListener('click', function() {
+                let retryCount = 0;
+                retryBtn.addEventListener('click', async function() {
+                    retryCount++;
+                    retryBtn.disabled = true;
+                    retryBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Retrying...';
+                    
+                    // Wait with exponential backoff
+                    const delay = Math.min(1000 * Math.pow(2, retryCount - 1), 5000);
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    
                     displayArtwork(artwork);
                 });
             }
             
-            console.error(`Failed to load image: ${artwork.primaryImage}`);
+            console.error(`Failed to load image through proxy: ${artwork.primaryImage}`);
+            
+            // Report to analytics if available
+            if (window.MetAnalytics && window.MetAnalytics.trackImageLoadError) {
+                window.MetAnalytics.trackImageLoadError(artwork.objectID, artwork.primaryImage);
+            }
         };
         
         // Set loading attribute for lazy loading
         img.loading = 'lazy';
         img.decoding = 'async';
+        
+        // FIXED: Add smart proxy selection for image loading
+        const loadImageWithProxy = async () => {
+            try {
+                // First try with current proxy
+                const proxyUrl = window.MetAPI.loadArtworkImage(highResImg);
+                img.src = proxyUrl;
+                console.log(`Loading image via proxy: ${proxyUrl}`);
+                
+                // Set a timeout for initial load attempt
+                const loadTimeout = setTimeout(() => {
+                    // If image hasn't loaded in 10 seconds, try fallback
+                    if (!img.complete || img.naturalWidth === 0) {
+                        console.log('Initial proxy slow, trying fallback...');
+                        tryFallbackProxy();
+                    }
+                }, 10000);
+                
+                // Clear timeout if image loads successfully
+                img.addEventListener('load', () => clearTimeout(loadTimeout), { once: true });
+            } catch (error) {
+                console.error('Error setting up image load:', error);
+                tryFallbackProxy();
+            }
+        };
+        
+        const tryFallbackProxy = async () => {
+            if (window.MetAPI.loadArtworkImageWithFallback) {
+                const fallbackUrl = await window.MetAPI.loadArtworkImageWithFallback(highResImg);
+                if (fallbackUrl) {
+                    img.src = fallbackUrl;
+                    console.log('Using fallback proxy URL:', fallbackUrl);
+                }
+            }
+        };
         
         // Add intersection observer for better performance
         if ('IntersectionObserver' in window) {
@@ -99,9 +164,7 @@ async function displayArtwork(artwork) {
                 entries.forEach(entry => {
                     if (entry.isIntersecting) {
                         // Load high-res image when in viewport
-                        const proxyUrl = window.MetAPI.loadArtworkImage(highResImg);
-                        img.src = proxyUrl;
-                        console.log(`Loading image via proxy: ${proxyUrl}`);
+                        loadImageWithProxy();
                         observer.unobserve(entry.target);
                     }
                 });
@@ -114,10 +177,9 @@ async function displayArtwork(artwork) {
             imageObserver.observe(img);
         } else {
             // Fallback for browsers without IntersectionObserver
-            const proxyUrl = window.MetAPI.loadArtworkImage(highResImg);
-            img.src = proxyUrl;
             imgContainer.appendChild(img);
             artworkContainer.appendChild(imgContainer);
+            loadImageWithProxy();
         }
     } else {
         // Display placeholder if no image available

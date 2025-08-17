@@ -132,6 +132,16 @@ const MetInit = (() => {
                 }
             }
 
+            // FIXED: Test proxy health before API connection
+            if (window.MetAPI && window.MetAPI.checkProxyHealthCached) {
+                console.log('[Init] Checking proxy health...');
+                try {
+                    await window.MetAPI.checkProxyHealthCached();
+                } catch (error) {
+                    console.warn('[Init] Proxy health check failed:', error);
+                }
+            }
+            
             // Test API connection
             await testAPIConnection();
 

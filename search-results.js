@@ -207,11 +207,14 @@ function createSearchResultItem(artwork) {
         imageDiv.appendChild(placeholder);
         
         // Setup progressive loading
-        const loadImage = () => {
+        const loadImage = async () => {
+            // FIXED: Use enhanced proxy system for search result images
             const imgUrl = window.MetAPI.loadArtworkImage(artwork.primaryImageSmall);
             
             // Preload image
             const tempImg = new Image();
+            let fallbackAttempted = false;
+            
             tempImg.onload = () => {
                 img.src = imgUrl;
                 img.onload = () => {
@@ -220,11 +223,34 @@ function createSearchResultItem(artwork) {
                 };
                 imageDiv.appendChild(img);
             };
-            tempImg.onerror = () => {
+            
+            tempImg.onerror = async () => {
+                if (!fallbackAttempted && window.MetAPI.loadArtworkImageWithFallback) {
+                    fallbackAttempted = true;
+                    console.log('Search result image failed, trying fallback proxy...');
+                    
+                    const fallbackUrl = await window.MetAPI.loadArtworkImageWithFallback(artwork.primaryImageSmall);
+                    if (fallbackUrl) {
+                        tempImg.src = fallbackUrl;
+                        return;
+                    }
+                }
+                
+                // All attempts failed
                 placeholder.innerHTML = '<i class="fas fa-image"></i>';
                 placeholder.classList.add('error');
+                placeholder.title = 'Image unavailable';
             };
+            
             tempImg.src = imgUrl;
+            
+            // Set a timeout for slow loads
+            setTimeout(() => {
+                if (!tempImg.complete && !fallbackAttempted && window.MetAPI.getNextProxyUrl) {
+                    console.log('Search image slow, rotating proxy...');
+                    window.MetAPI.getNextProxyUrl();
+                }
+            }, 5000);
         };
         
         // Use IntersectionObserver for true lazy loading

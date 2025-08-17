@@ -149,53 +149,105 @@ async function fetchWithProxy(endpoint, retries = 0, proxyIndex = 0) {
             }
         });
         
-        // Special handling for search endpoint which might be large
+        // FIXED: Improved streaming with timeout and size limits
         if (endpoint.includes('/search')) {
-            console.log('Search endpoint - expecting large response, using streaming approach');
+            console.log('Search endpoint - expecting potentially large response');
             
-            // First try to parse as JSON
             try {
-                const reader = response.body.getReader();
-                let result = '';
+                // Set a timeout for the entire streaming operation
+                const streamTimeout = 30000; // 30 seconds
+                const maxSize = 10 * 1024 * 1024; // 10MB limit
                 
-                // Process the stream in chunks
-                while (true) {
-                    const { done, value } = await reader.read();
+                const streamPromise = async () => {
+                    const reader = response.body.getReader();
+                    const decoder = new TextDecoder();
+                    let result = '';
+                    let totalSize = 0;
                     
-                    if (done) {
-                        break;
+                    try {
+                        while (true) {
+                            // Read with timeout for each chunk
+                            const readPromise = reader.read();
+                            const timeoutPromise = new Promise((_, reject) => 
+                                setTimeout(() => reject(new Error('Stream chunk timeout')), 5000)
+                            );
+                            
+                            const { done, value } = await Promise.race([readPromise, timeoutPromise]);
+                            
+                            if (done) {
+                                break;
+                            }
+                            
+                            // Check size limit
+                            totalSize += value.length;
+                            if (totalSize > maxSize) {
+                                throw new Error(`Response too large: ${totalSize} bytes exceeds ${maxSize} limit`);
+                            }
+                            
+                            // Decode and append chunk
+                            result += decoder.decode(value, { stream: true });
+                        }
+                        
+                        // Final decode
+                        result += decoder.decode();
+                        
+                        // Try to parse the complete result
+                        const data = JSON.parse(result);
+                        console.log(`Successfully parsed ${totalSize} bytes from stream`);
+                        return data;
+                    } catch (error) {
+                        // Always try to cancel the reader on error
+                        try {
+                            await reader.cancel();
+                        } catch (cancelError) {
+                            console.warn('Error canceling reader:', cancelError);
+                        }
+                        throw error;
                     }
-                    
-                    // Convert the chunk to a string and append to result
-                    result += new TextDecoder().decode(value);
-                }
+                };
                 
-                // Try to parse the result as JSON
-                try {
-                    const data = JSON.parse(result);
-                    console.log('Successfully parsed JSON from stream');
-                    return data;
-                } catch (parseError) {
-                    console.error('Error parsing JSON from stream:', parseError);
-                    console.error('First 500 chars of response:', result.substring(0, 500));
-                    throw new Error('Invalid JSON response from API');
+                // Apply overall timeout to streaming operation
+                const data = await Promise.race([
+                    streamPromise(),
+                    new Promise((_, reject) => 
+                        setTimeout(() => reject(new Error('Stream timeout')), streamTimeout)
+                    )
+                ]);
+                
+                return data;
+            } catch (error) {
+                console.error('Error processing search response:', error);
+                
+                // Provide helpful error message
+                if (error.message.includes('timeout')) {
+                    throw new Error('Search response took too long - try narrowing your search criteria');
+                } else if (error.message.includes('too large')) {
+                    throw new Error('Search returned too many results - try adding more filters');
+                } else if (error.message.includes('JSON')) {
+                    throw new Error('Invalid response format from API');
                 }
-            } catch (streamError) {
-                console.error('Error streaming response:', streamError);
-                throw streamError;
+                throw error;
             }
         } else {
-            // For other endpoints, which should be smaller
-            const text = await response.text();
+            // For other endpoints, use simpler approach with timeout
+            const textPromise = response.text();
+            const timeoutPromise = new Promise((_, reject) => 
+                setTimeout(() => reject(new Error('Response timeout')), 15000)
+            );
+            
             try {
+                const text = await Promise.race([textPromise, timeoutPromise]);
                 const data = JSON.parse(text);
                 console.log('Fetch successful');
                 return data;
-            } catch (parseError) {
-                console.error('Invalid JSON response from proxy:', parseError);
-                console.error('First 500 chars of response:', text.substring(0, 500));
+            } catch (error) {
+                if (error.message === 'Response timeout') {
+                    throw new Error('API response took too long');
+                }
+                
+                console.error('Invalid JSON response:', error);
                 // Check if it's an HTML error page
-                if (text.includes('<!DOCTYPE') || text.includes('<html')) {
+                if (typeof text === 'string' && (text.includes('<!DOCTYPE') || text.includes('<html'))) {
                     throw new Error('Proxy returned HTML instead of JSON - possible CORS or proxy error');
                 }
                 throw new Error('Invalid JSON response from API');
@@ -726,16 +778,107 @@ async function getRandomArtworkWithFallback(filters = {}) {
     }
 }
 
-// Function to get a proxied URL for images
-function getProxiedUrl(originalUrl) {
-    if (!originalUrl) return '';
-    return `${CORS_PROXY_URL}?url=${encodeURIComponent(originalUrl)}`;
+// FIXED: Enhanced proxy URL handling with fallback support
+let currentProxyIndex = 0;
+const proxyRotationKey = 'metArtProxyIndex';
+
+// Get the next proxy URL to try
+function getNextProxyUrl() {
+    const allProxies = [CORS_PROXY_URL, ...CORS_PROXY_FALLBACKS];
+    currentProxyIndex = (currentProxyIndex + 1) % allProxies.length;
+    
+    // Save current proxy index for persistence
+    try {
+        localStorage.setItem(proxyRotationKey, currentProxyIndex.toString());
+    } catch (e) {
+        // Ignore storage errors
+    }
+    
+    return allProxies[currentProxyIndex];
 }
 
-// Function to load artwork image with proxy
+// Load saved proxy index
+try {
+    const savedIndex = localStorage.getItem(proxyRotationKey);
+    if (savedIndex !== null) {
+        currentProxyIndex = parseInt(savedIndex) || 0;
+    }
+} catch (e) {
+    // Ignore storage errors
+}
+
+// Function to get a proxied URL for images
+function getProxiedUrl(originalUrl, proxyUrl = null) {
+    if (!originalUrl) return '';
+    
+    // Use provided proxy or current default
+    const proxy = proxyUrl || CORS_PROXY_URL;
+    
+    // Handle different proxy formats
+    if (proxy.includes('?')) {
+        return `${proxy}${encodeURIComponent(originalUrl)}`;
+    } else {
+        return `${proxy}?url=${encodeURIComponent(originalUrl)}`;
+    }
+}
+
+// Function to load artwork image with proxy and fallback support
 function loadArtworkImage(imageUrl) {
     if (!imageUrl) return '';
-    return getProxiedUrl(imageUrl);
+    
+    // FIXED: Add image URL validation and enhancement
+    // Convert http to https for better compatibility
+    const secureUrl = imageUrl.replace(/^http:/, 'https:');
+    
+    // Use current proxy
+    const allProxies = [CORS_PROXY_URL, ...CORS_PROXY_FALLBACKS];
+    const currentProxy = allProxies[currentProxyIndex % allProxies.length];
+    
+    return getProxiedUrl(secureUrl, currentProxy);
+}
+
+// Enhanced image loading with automatic proxy rotation
+async function loadArtworkImageWithFallback(imageUrl) {
+    if (!imageUrl) return null;
+    
+    const allProxies = [CORS_PROXY_URL, ...CORS_PROXY_FALLBACKS];
+    let lastError = null;
+    
+    // Try each proxy with timeout
+    for (let i = 0; i < allProxies.length; i++) {
+        const proxyUrl = allProxies[(currentProxyIndex + i) % allProxies.length];
+        const proxiedUrl = getProxiedUrl(imageUrl, proxyUrl);
+        
+        try {
+            // Test if the proxy works by doing a HEAD request with timeout
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+            
+            const response = await fetch(proxiedUrl, {
+                method: 'HEAD',
+                signal: controller.signal
+            });
+            
+            clearTimeout(timeoutId);
+            
+            if (response.ok) {
+                // This proxy works, update the current index
+                currentProxyIndex = (currentProxyIndex + i) % allProxies.length;
+                try {
+                    localStorage.setItem(proxyRotationKey, currentProxyIndex.toString());
+                } catch (e) {
+                    // Ignore storage errors
+                }
+                return proxiedUrl;
+            }
+        } catch (error) {
+            lastError = error;
+            console.warn(`Proxy ${proxyUrl} failed for image:`, error.message);
+        }
+    }
+    
+    console.error('All proxies failed for image:', imageUrl, lastError);
+    return null;
 }
 
 // Get cached artworks from service worker
@@ -823,6 +966,104 @@ async function getRandomArtworkEnhanced(filters = {}) {
     return getRandomArtworkWithFallback(filters);
 }
 
+// FIXED: Add proxy health check functionality
+async function testProxyHealth() {
+    const allProxies = [CORS_PROXY_URL, ...CORS_PROXY_FALLBACKS];
+    const results = [];
+    
+    // Test image URL from Met collection
+    const testImageUrl = 'https://images.metmuseum.org/CRDImages/ep/web-large/DT1567.jpg';
+    
+    console.log('Testing proxy health...');
+    
+    for (let i = 0; i < allProxies.length; i++) {
+        const proxy = allProxies[i];
+        const startTime = Date.now();
+        
+        try {
+            const proxiedUrl = getProxiedUrl(testImageUrl, proxy);
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 5000);
+            
+            const response = await fetch(proxiedUrl, {
+                method: 'HEAD',
+                signal: controller.signal
+            });
+            
+            clearTimeout(timeoutId);
+            const responseTime = Date.now() - startTime;
+            
+            if (response.ok) {
+                results.push({
+                    proxy,
+                    status: 'healthy',
+                    responseTime,
+                    index: i
+                });
+                console.log(`✓ Proxy ${proxy} - ${responseTime}ms`);
+            } else {
+                results.push({
+                    proxy,
+                    status: 'unhealthy',
+                    error: `HTTP ${response.status}`,
+                    index: i
+                });
+                console.log(`✗ Proxy ${proxy} - HTTP ${response.status}`);
+            }
+        } catch (error) {
+            results.push({
+                proxy,
+                status: 'failed',
+                error: error.message,
+                index: i
+            });
+            console.log(`✗ Proxy ${proxy} - ${error.message}`);
+        }
+    }
+    
+    // Sort by response time and select fastest healthy proxy
+    const healthyProxies = results.filter(r => r.status === 'healthy');
+    if (healthyProxies.length > 0) {
+        healthyProxies.sort((a, b) => a.responseTime - b.responseTime);
+        const fastest = healthyProxies[0];
+        currentProxyIndex = fastest.index;
+        
+        try {
+            localStorage.setItem(proxyRotationKey, currentProxyIndex.toString());
+            localStorage.setItem('metArtProxyHealthCheck', JSON.stringify({
+                timestamp: Date.now(),
+                results
+            }));
+        } catch (e) {
+            // Ignore storage errors
+        }
+        
+        console.log(`Selected fastest proxy: ${fastest.proxy} (${fastest.responseTime}ms)`);
+    }
+    
+    return results;
+}
+
+// Check proxy health on startup (with cached results)
+async function checkProxyHealthCached() {
+    try {
+        const cached = localStorage.getItem('metArtProxyHealthCheck');
+        if (cached) {
+            const { timestamp, results } = JSON.parse(cached);
+            // Use cached results if less than 1 hour old
+            if (Date.now() - timestamp < 3600000) {
+                console.log('Using cached proxy health check');
+                return results;
+            }
+        }
+    } catch (e) {
+        // Ignore errors
+    }
+    
+    // Perform fresh health check
+    return testProxyHealth();
+}
+
 // Make functions available globally
 window.MetAPI = {
     testApiConnection,
@@ -834,6 +1075,10 @@ window.MetAPI = {
     getRandomArtwork: getRandomArtworkEnhanced,
     getProxiedUrl,
     loadArtworkImage,
+    loadArtworkImageWithFallback, // FIXED: Added enhanced image loading
+    getNextProxyUrl, // FIXED: Added proxy rotation
+    testProxyHealth, // FIXED: Added proxy health check
+    checkProxyHealthCached, // FIXED: Added cached health check
     getCachedArtworks,
     hasCachedArtworks,
     getRandomCachedArtwork,

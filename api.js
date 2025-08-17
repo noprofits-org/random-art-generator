@@ -96,12 +96,12 @@ async function fetchWithRetry(url, options = {}, retries = 0) {
         if (!response.ok) {
             // Handle rate limiting specifically
             if (response.status === 429) {
-                console.warn('Rate limited by API');
+                window.MetLogger?.warn('Rate limited by API');
                 // Look for Retry-After header
                 const retryAfter = response.headers.get('Retry-After');
                 if (retryAfter) {
                     const delay = parseInt(retryAfter) * 1000;
-                    console.log(`API requested retry after ${delay}ms`);
+                    window.MetLogger?.log(`API requested retry after ${delay}ms`);
                     await new Promise(resolve => setTimeout(resolve, delay));
                     return fetchWithRetry(url, options, retries);
                 }
@@ -114,8 +114,8 @@ async function fetchWithRetry(url, options = {}, retries = 0) {
         // If we have retries left, retry after a delay
         if (retries < MAX_RETRIES) {
             const delay = calculateBackoffDelay(retries);
-            console.log(`Fetch attempt failed: ${error.message}`);
-            console.log(`Retrying in ${Math.round(delay)}ms... (${retries + 1}/${MAX_RETRIES})`);
+            window.MetLogger?.log(`Fetch attempt failed: ${error.message}`);
+            window.MetLogger?.log(`Retrying in ${Math.round(delay)}ms... (${retries + 1}/${MAX_RETRIES})`);
             await new Promise(resolve => setTimeout(resolve, delay));
             return fetchWithRetry(url, options, retries + 1);
         }
@@ -133,7 +133,7 @@ async function fetchWithProxy(endpoint, retries = 0, proxyIndex = 0) {
     let currentProxy = CORS_PROXY_URL;
     if (proxyIndex > 0 && proxyIndex <= CORS_PROXY_FALLBACKS.length) {
         currentProxy = CORS_PROXY_FALLBACKS[proxyIndex - 1];
-        console.log(`Using fallback proxy #${proxyIndex}: ${currentProxy}`);
+        window.MetLogger?.log(`Using fallback proxy #${proxyIndex}: ${currentProxy}`);
     }
     
     const proxyUrl = `${currentProxy}${currentProxy.includes('?') ? '' : '?url='}${encodeURIComponent(targetUrl)}`;
@@ -151,7 +151,7 @@ async function fetchWithProxy(endpoint, retries = 0, proxyIndex = 0) {
         
         // FIXED: Improved streaming with timeout and size limits
         if (endpoint.includes('/search')) {
-            console.log('Search endpoint - expecting potentially large response');
+            window.MetLogger?.log('Search endpoint - expecting potentially large response');
             
             try {
                 // Set a timeout for the entire streaming operation
@@ -193,14 +193,14 @@ async function fetchWithProxy(endpoint, retries = 0, proxyIndex = 0) {
                         
                         // Try to parse the complete result
                         const data = JSON.parse(result);
-                        console.log(`Successfully parsed ${totalSize} bytes from stream`);
+                        window.MetLogger?.log(`Successfully parsed ${totalSize} bytes from stream`);
                         return data;
                     } catch (error) {
                         // Always try to cancel the reader on error
                         try {
                             await reader.cancel();
                         } catch (cancelError) {
-                            console.warn('Error canceling reader:', cancelError);
+                            window.MetLogger?.warn('Error canceling reader:', cancelError);
                         }
                         throw error;
                     }
@@ -216,7 +216,7 @@ async function fetchWithProxy(endpoint, retries = 0, proxyIndex = 0) {
                 
                 return data;
             } catch (error) {
-                console.error('Error processing search response:', error);
+                window.MetLogger?.error('Error processing search response:', error);
                 
                 // Provide helpful error message
                 if (error.message.includes('timeout')) {
@@ -238,14 +238,14 @@ async function fetchWithProxy(endpoint, retries = 0, proxyIndex = 0) {
             try {
                 const text = await Promise.race([textPromise, timeoutPromise]);
                 const data = JSON.parse(text);
-                console.log('Fetch successful');
+                window.MetLogger?.log('Fetch successful');
                 return data;
             } catch (error) {
                 if (error.message === 'Response timeout') {
                     throw new Error('API response took too long');
                 }
                 
-                console.error('Invalid JSON response:', error);
+                window.MetLogger?.error('Invalid JSON response:', error);
                 // Check if it's an HTML error page
                 if (typeof text === 'string' && (text.includes('<!DOCTYPE') || text.includes('<html'))) {
                     throw new Error('Proxy returned HTML instead of JSON - possible CORS or proxy error');
@@ -254,23 +254,25 @@ async function fetchWithProxy(endpoint, retries = 0, proxyIndex = 0) {
             }
         }
     } catch (error) {
-        console.error(`Proxy request failed:`, error);
+        window.MetLogger?.error(`Proxy request failed:`, error);
         
         // Try next proxy if available
         if (proxyIndex < CORS_PROXY_FALLBACKS.length) {
-            console.log(`Trying fallback proxy ${proxyIndex + 1}/${CORS_PROXY_FALLBACKS.length}`);
+            window.MetLogger?.log(`Trying fallback proxy ${proxyIndex + 1}/${CORS_PROXY_FALLBACKS.length}`);
             return fetchWithProxy(endpoint, 0, proxyIndex + 1);
         }
         
         // If we have retries left for the current proxy, retry
         if (retries < MAX_RETRIES) {
             const delay = calculateBackoffDelay(retries);
-            console.warn(`Retrying current proxy in ${Math.round(delay)}ms... (${retries + 1}/${MAX_RETRIES})`);
+            window.MetLogger?.warn(`Retrying current proxy in ${Math.round(delay)}ms... (${retries + 1}/${MAX_RETRIES})`);
             await new Promise(resolve => setTimeout(resolve, delay));
             return fetchWithProxy(endpoint, retries + 1, proxyIndex);
         }
         
-        console.error(`All proxy attempts failed after ${MAX_RETRIES} retries:`, error);
+        // Critical error - keep console.error for user visibility
+        console.error('Unable to connect to the Met Museum API. Please check your internet connection and try again.');
+        window.MetLogger?.error(`All proxy attempts failed after ${MAX_RETRIES} retries:`, error);
         throw new Error(`Unable to fetch data: ${error.message}`);
     }
 }
@@ -279,10 +281,10 @@ async function fetchWithProxy(endpoint, retries = 0, proxyIndex = 0) {
 async function testApiConnection() {
     try {
         const data = await fetchWithProxy('/departments');
-        console.log('API connection successful!', data);
+        window.MetLogger?.log('API connection successful!', data);
         return data;
     } catch (error) {
-        console.error('API connection failed:', error);
+        window.MetLogger?.error('API connection failed:', error);
         return null;
     }
 }
@@ -293,7 +295,7 @@ async function getDepartments() {
         const data = await fetchWithProxy('/departments');
         return data.departments || [];
     } catch (error) {
-        console.error('Failed to fetch departments:', error);
+        window.MetLogger?.error('Failed to fetch departments:', error);
         return [];
     }
 }
@@ -301,23 +303,23 @@ async function getDepartments() {
 // Get artworks from a specific department (more reliable than search)
 async function getArtworksFromDepartment(departmentId, limit = 1000) {
     try {
-        console.log(`Fetching objects from department ${departmentId}`);
+        window.MetLogger?.log(`Fetching objects from department ${departmentId}`);
         const endpoint = `/objects?departmentIds=${departmentId}`;
         const data = await fetchWithProxy(endpoint);
         
         if (!data || !data.objectIDs || data.objectIDs.length === 0) {
-            console.log('No objects found in department');
+            window.MetLogger?.log('No objects found in department');
             return [];
         }
         
         // Limit results to prevent memory issues
         const limitedIDs = data.objectIDs.slice(0, Math.min(limit, data.objectIDs.length));
-        console.log(`Found ${data.objectIDs.length} objects in department, using ${limitedIDs.length}`);
+        window.MetLogger?.log(`Found ${data.objectIDs.length} objects in department, using ${limitedIDs.length}`);
         
         // Shuffle for randomness
         return limitedIDs.sort(() => 0.5 - Math.random());
     } catch (error) {
-        console.error(`Error fetching department ${departmentId} objects:`, error);
+        window.MetLogger?.error(`Error fetching department ${departmentId} objects:`, error);
         return [];
     }
 }
@@ -336,10 +338,10 @@ async function getRandomObjectIds(count = 20) {
         const shuffled = data.objectIDs.sort(() => 0.5 - Math.random());
         return shuffled.slice(0, count);
     } catch (error) {
-        console.error('Error getting random object IDs:', error);
+        window.MetLogger?.error('Error getting random object IDs:', error);
         
         // Fallback to a small set of known object IDs if API fails
-        console.log('Using fallback object IDs');
+        window.MetLogger?.log('Using fallback object IDs');
         return [435809, 11737, 436944, 436964, 436965, 438144, 438821, 437386, 435888, 437394]; // Known good IDs
     }
 }
@@ -390,7 +392,7 @@ async function searchObjects(filters = {}) {
             queryParams += `&medium=${encodeURIComponent(filters.medium)}`;
         }
         
-        console.log(`Searching with query: ${queryParams}`);
+        window.MetLogger?.log(`Searching with query: ${queryParams}`);
         
         // Make the API request
         const data = await fetchWithProxy(`/search?${queryParams}`);
@@ -398,13 +400,13 @@ async function searchObjects(filters = {}) {
         if (data && data.objectIDs && data.objectIDs.length > 0) {
             // Limit results to prevent 502 errors
             const limitedIDs = data.objectIDs.slice(0, 100);
-            console.log(`Found ${data.total || limitedIDs.length} objects, using first ${limitedIDs.length}`);
+            window.MetLogger?.log(`Found ${data.total || limitedIDs.length} objects, using first ${limitedIDs.length}`);
             return limitedIDs;
         }
         
         return [];
     } catch (error) {
-        console.error('Error searching objects:', error);
+        window.MetLogger?.error('Error searching objects:', error);
         // Fallback to department objects or random
         if (filters.departmentId) {
             return await getArtworksFromDepartment(filters.departmentId);
@@ -438,7 +440,7 @@ async function searchArtworks(filters = {}) {
     // Check cache first
     const cached = searchCache.get(cacheKey);
     if (cached && Date.now() - cached.timestamp < SEARCH_CACHE_DURATION) {
-        console.log('Returning cached search results');
+        window.MetLogger?.log('Returning cached search results');
         return cached.objectIDs;
     }
     
@@ -489,23 +491,23 @@ async function searchArtworks(filters = {}) {
             queryParams += `&isPublicDomain=${isPublicDomain}`;
         }
         
-        console.log(`Searching artworks with query: ${queryParams}`);
+        window.MetLogger?.log(`Searching artworks with query: ${queryParams}`);
         
         // Make the API request
         const data = await fetchWithProxy(`/search?${queryParams}`);
         
         if (!data || !data.objectIDs) {
-            console.log('No results found for search query');
+            window.MetLogger?.log('No results found for search query');
             return [];
         }
         
-        console.log(`Found ${data.total || data.objectIDs.length} artworks matching search`);
+        window.MetLogger?.log(`Found ${data.total || data.objectIDs.length} artworks matching search`);
         
         // Limit results to prevent performance issues
         let limitedIDs = data.objectIDs;
         if (limitedIDs.length > 500) {
             limitedIDs = limitedIDs.slice(0, 500);
-            console.log(`Limited results to ${limitedIDs.length} for performance`);
+            window.MetLogger?.log(`Limited results to ${limitedIDs.length} for performance`);
         }
         
         // Cache the results
@@ -517,7 +519,7 @@ async function searchArtworks(filters = {}) {
         
         return limitedIDs;
     } catch (error) {
-        console.error('Error searching artworks:', error);
+        window.MetLogger?.error('Error searching artworks:', error);
         return [];
     }
 }
@@ -543,7 +545,7 @@ async function getObjectDetailsMultiple(objectIds, batchSize = 5) {
         }
     }
     
-    console.log(`Found ${cached.length} cached items, need to fetch ${uncached.length}`);
+    window.MetLogger?.log(`Found ${cached.length} cached items, need to fetch ${uncached.length}`);
     results.push(...cached);
     
     // Fetch uncached items in batches
@@ -568,7 +570,7 @@ async function getObjectDetailsMultiple(objectIds, batchSize = 5) {
                 window.MetUI.updateLoadingProgress(progress);
             }
         } catch (error) {
-            console.error('Error fetching batch:', error);
+            window.MetLogger?.error('Error fetching batch:', error);
         }
     }
     
@@ -579,13 +581,13 @@ async function getObjectDetailsMultiple(objectIds, batchSize = 5) {
 // Clear search cache
 function clearSearchCache() {
     searchCache.clear();
-    console.log('Search cache cleared');
+    window.MetLogger?.log('Search cache cleared');
 }
 
 // Clear object details cache
 function clearObjectCache() {
     objectDetailsCache.clear();
-    console.log('Object details cache cleared');
+    window.MetLogger?.log('Object details cache cleared');
 }
 
 // Clear all caches
@@ -599,7 +601,7 @@ async function getObjectDetails(objectId) {
     // Check cache first
     const cached = objectDetailsCache.get(objectId);
     if (cached && Date.now() - cached.timestamp < OBJECT_CACHE_DURATION) {
-        console.log(`Returning cached details for object ${objectId}`);
+        window.MetLogger?.log(`Returning cached details for object ${objectId}`);
         return cached.data;
     }
     
@@ -628,7 +630,7 @@ async function getObjectDetails(objectId) {
                 
                 return data;
             } else {
-                console.log(`Object ${objectId} has no image, skipping`);
+                window.MetLogger?.log(`Object ${objectId} has no image, skipping`);
                 // Cache null result to avoid repeated requests
                 objectDetailsCache.set(objectId, {
                     data: null,
@@ -637,7 +639,7 @@ async function getObjectDetails(objectId) {
                 return null;
             }
         } catch (error) {
-            console.error(`Error fetching details for object ${objectId}:`, error);
+            window.MetLogger?.error(`Error fetching details for object ${objectId}:`, error);
             return null;
         }
     });
@@ -677,7 +679,7 @@ async function getRandomArtwork(filters = {}) {
         */
         
         // SIMPLIFIED: Always use random objects
-        console.log('Getting random objects from the Met collection');
+        window.MetLogger?.log('Getting random objects from the Met collection');
         let objectIDs = await getRandomObjectIds(50);
         
         if (!objectIDs || objectIDs.length === 0) {
@@ -699,7 +701,7 @@ async function getRandomArtwork(filters = {}) {
             const randomIndex = Math.floor(Math.random() * objectIDs.length);
             const randomObjectId = objectIDs[randomIndex];
             
-            console.log(`Attempt ${attempt + 1}: Trying object ID ${randomObjectId}`);
+            window.MetLogger?.log(`Attempt ${attempt + 1}: Trying object ID ${randomObjectId}`);
             objectDetails = await getObjectDetails(randomObjectId);
             
             if (objectDetails) {
@@ -714,7 +716,7 @@ async function getRandomArtwork(filters = {}) {
         }
         
         if (!objectDetails) {
-            console.warn('Could not find any artwork with images');
+            window.MetLogger?.warn('Could not find any artwork with images');
             if (window.MetUI && window.MetUI.showError) {
                 window.MetUI.showError('No artworks with images found. Please try again.');
             }
@@ -723,7 +725,9 @@ async function getRandomArtwork(filters = {}) {
         
         return objectDetails;
     } catch (error) {
-        console.error('Error getting random artwork:', error);
+        // Critical error - keep console.error for user visibility
+        console.error('Failed to load artwork. Please try again.');
+        window.MetLogger?.error('Error getting random artwork:', error);
         // FIXED: Added defensive check for window.MetUI before use
         if (window.MetUI && window.MetUI.hideLoading) {
             window.MetUI.hideLoading();
@@ -773,7 +777,7 @@ async function getRandomArtworkWithFallback(filters = {}) {
         
         return null;
     } catch (error) {
-        console.error('Error in artwork fallback:', error);
+        window.MetLogger?.error('Error in artwork fallback:', error);
         // FIXED: Added defensive check for window.MetUI before use
         if (window.MetUI && window.MetUI.hideLoading) {
             window.MetUI.hideLoading();
@@ -880,11 +884,11 @@ async function loadArtworkImageWithFallback(imageUrl) {
             }
         } catch (error) {
             lastError = error;
-            console.warn(`Proxy ${proxyUrl} failed for image:`, error.message);
+            window.MetLogger?.warn(`Proxy ${proxyUrl} failed for image:`, error.message);
         }
     }
     
-    console.error('All proxies failed for image:', imageUrl, lastError);
+    window.MetLogger?.error('All proxies failed for image:', imageUrl, lastError);
     return null;
 }
 
@@ -924,7 +928,7 @@ async function getRandomCachedArtwork() {
         const cachedArtworks = await getCachedArtworks();
         
         if (cachedArtworks.length === 0) {
-            console.log('No cached artworks available');
+            window.MetLogger?.log('No cached artworks available');
             return null;
         }
         
@@ -932,10 +936,10 @@ async function getRandomCachedArtwork() {
         const randomIndex = Math.floor(Math.random() * cachedArtworks.length);
         const artwork = cachedArtworks[randomIndex];
         
-        console.log(`Selected random cached artwork: ${artwork.title}`);
+        window.MetLogger?.log(`Selected random cached artwork: ${artwork.title}`);
         return artwork;
     } catch (error) {
-        console.error('Error getting random cached artwork:', error);
+        window.MetLogger?.error('Error getting random cached artwork:', error);
         return null;
     }
 }
@@ -944,7 +948,7 @@ async function getRandomCachedArtwork() {
 async function getRandomArtworkEnhanced(filters = {}) {
     // Check if we're online
     if (!navigator.onLine) {
-        console.log('Offline - attempting to load cached artwork');
+        window.MetLogger?.log('Offline - attempting to load cached artwork');
         // FIXED: Added defensive check for window.MetUI before use
         if (window.MetUI && window.MetUI.updateLoadingMessage) {
             window.MetUI.updateLoadingMessage('Loading from offline collection...');
@@ -981,7 +985,7 @@ async function testProxyHealth() {
     // Test image URL from Met collection
     const testImageUrl = 'https://images.metmuseum.org/CRDImages/ep/web-large/DT1567.jpg';
     
-    console.log('Testing proxy health...');
+    window.MetLogger?.log('Testing proxy health...');
     
     for (let i = 0; i < allProxies.length; i++) {
         const proxy = allProxies[i];
@@ -1007,7 +1011,7 @@ async function testProxyHealth() {
                     responseTime,
                     index: i
                 });
-                console.log(`✓ Proxy ${proxy} - ${responseTime}ms`);
+                window.MetLogger?.log(`✓ Proxy ${proxy} - ${responseTime}ms`);
             } else {
                 results.push({
                     proxy,
@@ -1015,7 +1019,7 @@ async function testProxyHealth() {
                     error: `HTTP ${response.status}`,
                     index: i
                 });
-                console.log(`✗ Proxy ${proxy} - HTTP ${response.status}`);
+                window.MetLogger?.log(`✗ Proxy ${proxy} - HTTP ${response.status}`);
             }
         } catch (error) {
             results.push({
@@ -1024,7 +1028,7 @@ async function testProxyHealth() {
                 error: error.message,
                 index: i
             });
-            console.log(`✗ Proxy ${proxy} - ${error.message}`);
+            window.MetLogger?.log(`✗ Proxy ${proxy} - ${error.message}`);
         }
     }
     
@@ -1045,7 +1049,7 @@ async function testProxyHealth() {
             // Ignore storage errors
         }
         
-        console.log(`Selected fastest proxy: ${fastest.proxy} (${fastest.responseTime}ms)`);
+        window.MetLogger?.log(`Selected fastest proxy: ${fastest.proxy} (${fastest.responseTime}ms)`);
     }
     
     return results;
@@ -1059,7 +1063,7 @@ async function checkProxyHealthCached() {
             const { timestamp, results } = JSON.parse(cached);
             // Use cached results if less than 1 hour old
             if (Date.now() - timestamp < 3600000) {
-                console.log('Using cached proxy health check');
+                window.MetLogger?.log('Using cached proxy health check');
                 return results;
             }
         }

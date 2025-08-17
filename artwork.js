@@ -3,7 +3,7 @@
 // Display the artwork in the UI
 async function displayArtwork(artwork) {
     if (!artwork) {
-        console.error('No artwork data provided');
+        window.MetLogger?.error('No artwork data provided');
         return;
     }
     
@@ -66,7 +66,7 @@ async function displayArtwork(artwork) {
             
             // Check if we have a small image as fallback
             if (artwork.primaryImageSmall && artwork.primaryImageSmall !== highResImg && !img.dataset.smallImageTried) {
-                console.log('High-res proxy failed, trying small image through proxy');
+                window.MetLogger?.log('High-res proxy failed, trying small image through proxy');
                 img.dataset.smallImageTried = 'true';
                 const smallProxyUrl = window.MetAPI.loadArtworkImage(artwork.primaryImageSmall);
                 img.src = smallProxyUrl;
@@ -111,7 +111,7 @@ async function displayArtwork(artwork) {
                 });
             }
             
-            console.error(`Failed to load image through proxy: ${artwork.primaryImage}`);
+            window.MetLogger?.error(`Failed to load image through proxy: ${artwork.primaryImage}`);
             
             // Report to analytics if available
             if (window.MetAnalytics && window.MetAnalytics.trackImageLoadError) {
@@ -129,13 +129,13 @@ async function displayArtwork(artwork) {
                 // First try with current proxy
                 const proxyUrl = window.MetAPI.loadArtworkImage(highResImg);
                 img.src = proxyUrl;
-                console.log(`Loading image via proxy: ${proxyUrl}`);
+                window.MetLogger?.log(`Loading image via proxy: ${proxyUrl}`);
                 
                 // Set a timeout for initial load attempt
                 const loadTimeout = setTimeout(() => {
                     // If image hasn't loaded in 10 seconds, try fallback
                     if (!img.complete || img.naturalWidth === 0) {
-                        console.log('Initial proxy slow, trying fallback...');
+                        window.MetLogger?.log('Initial proxy slow, trying fallback...');
                         tryFallbackProxy();
                     }
                 }, 10000);
@@ -143,7 +143,7 @@ async function displayArtwork(artwork) {
                 // Clear timeout if image loads successfully
                 img.addEventListener('load', () => clearTimeout(loadTimeout), { once: true });
             } catch (error) {
-                console.error('Error setting up image load:', error);
+                window.MetLogger?.error('Error setting up image load:', error);
                 tryFallbackProxy();
             }
         };
@@ -153,7 +153,7 @@ async function displayArtwork(artwork) {
                 const fallbackUrl = await window.MetAPI.loadArtworkImageWithFallback(highResImg);
                 if (fallbackUrl) {
                     img.src = fallbackUrl;
-                    console.log('Using fallback proxy URL:', fallbackUrl);
+                    window.MetLogger?.log('Using fallback proxy URL:', fallbackUrl);
                 }
             }
         };
@@ -198,7 +198,7 @@ async function displayArtwork(artwork) {
         try {
             isFavorited = await window.MetFavorites.isFavorited(artwork.objectID);
         } catch (error) {
-            console.error('Error checking favorite status:', error);
+            window.MetLogger?.error('Error checking favorite status:', error);
         }
     }
     
@@ -267,7 +267,7 @@ async function displayArtwork(artwork) {
                 // Re-enable button
                 favoriteBtn.disabled = false;
             } catch (error) {
-                console.error('Error toggling favorite:', error);
+                window.MetLogger?.error('Error toggling favorite:', error);
                 favoriteBtn.disabled = false;
                 
                 if (window.MetUI && window.MetUI.updateStatus) {
@@ -278,7 +278,7 @@ async function displayArtwork(artwork) {
     }
     
     // Log the displayed artwork
-    console.log('Displayed artwork:', artwork);
+    window.MetLogger?.log('Displayed artwork:', artwork);
 }
 
 // Display favorite artwork from stored data

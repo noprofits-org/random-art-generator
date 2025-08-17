@@ -6,7 +6,8 @@ const CONFIG = {
     CACHE_VERSION: '1.3.0',
     MAX_CACHED_IMAGES: 100,
     MAX_CACHE_AGE: 7 * 24 * 60 * 60 * 1000,
-    CACHE_CLEANUP_INTERVAL: 60 * 60 * 1000
+    CACHE_CLEANUP_INTERVAL: 60 * 60 * 1000,
+    DEBUG_MODE: false // Set to true to enable debug logging
 };
 
 const CACHE_NAME = `met-art-generator-v${CONFIG.CACHE_VERSION}`;
@@ -42,23 +43,23 @@ const STATIC_ASSETS = [
 
 // Install event - cache static assets
 self.addEventListener('install', (event) => {
-    console.log('[Service Worker] Installing...');
+    if (self.CONFIG?.DEBUG_MODE) console.log('[Service Worker] Installing...');
     
     event.waitUntil(
         caches.open(CACHE_NAME)
             .then((cache) => {
-                console.log('[Service Worker] Caching static assets');
+                if (self.CONFIG?.DEBUG_MODE) console.log('[Service Worker] Caching static assets');
                 // Use addAll with error handling for individual files
                 return Promise.all(
                     STATIC_ASSETS.map(url => {
                         return cache.add(url).catch(err => {
-                            console.warn(`[Service Worker] Failed to cache ${url}:`, err);
+                            if (self.CONFIG?.DEBUG_MODE) console.warn(`[Service Worker] Failed to cache ${url}:`, err);
                         });
                     })
                 );
             })
             .then(() => {
-                console.log('[Service Worker] Installation complete');
+                if (self.CONFIG?.DEBUG_MODE) console.log('[Service Worker] Installation complete');
                 // Skip waiting to activate immediately
                 return self.skipWaiting();
             })
@@ -70,7 +71,7 @@ self.addEventListener('install', (event) => {
 
 // Activate event - clean up old caches
 self.addEventListener('activate', (event) => {
-    console.log('[Service Worker] Activating...');
+    if (self.CONFIG?.DEBUG_MODE) console.log('[Service Worker] Activating...');
     
     event.waitUntil(
         caches.keys()
@@ -81,14 +82,14 @@ self.addEventListener('activate', (event) => {
                         if (cacheName !== CACHE_NAME && 
                             cacheName !== API_CACHE_NAME && 
                             cacheName !== IMAGE_CACHE_NAME) {
-                            console.log('[Service Worker] Deleting old cache:', cacheName);
+                            if (self.CONFIG?.DEBUG_MODE) console.log('[Service Worker] Deleting old cache:', cacheName);
                             return caches.delete(cacheName);
                         }
                     })
                 );
             })
             .then(() => {
-                console.log('[Service Worker] Activation complete');
+                if (self.CONFIG?.DEBUG_MODE) console.log('[Service Worker] Activation complete');
                 // Take control of all clients immediately
                 return self.clients.claim();
             })
@@ -136,17 +137,17 @@ async function cacheFirstStrategy(request) {
             
             // For HTML files, always try to fetch fresh version in background
             if (request.mode === 'navigate' || request.url.endsWith('.html')) {
-                console.log('[Service Worker] Serving from cache and updating:', request.url);
+                if (self.CONFIG?.DEBUG_MODE) console.log('[Service Worker] Serving from cache and updating:', request.url);
                 // Return cached version immediately but update in background
                 fetchAndCache(request, CACHE_NAME);
                 return cachedResponse;
             }
             
-            console.log('[Service Worker] Serving from cache:', request.url);
+            if (self.CONFIG?.DEBUG_MODE) console.log('[Service Worker] Serving from cache:', request.url);
             return cachedResponse;
         }
         
-        console.log('[Service Worker] Fetching from network:', request.url);
+        if (self.CONFIG?.DEBUG_MODE) console.log('[Service Worker] Fetching from network:', request.url);
         const networkResponse = await fetch(request);
         
         // Cache successful responses
@@ -178,7 +179,7 @@ async function cacheFirstStrategy(request) {
 // Network-first strategy - try network, fallback to cache
 async function networkFirstStrategy(request) {
     try {
-        console.log('[Service Worker] Fetching API from network:', request.url);
+        if (self.CONFIG?.DEBUG_MODE) console.log('[Service Worker] Fetching API from network:', request.url);
         const networkResponse = await fetch(request);
         
         // Cache successful API responses with timestamp
@@ -214,7 +215,7 @@ async function networkFirstStrategy(request) {
             if (cachedAt) {
                 const age = Date.now() - new Date(cachedAt).getTime();
                 if (age > MAX_API_CACHE_AGE) {
-                    console.log('[Service Worker] API cache expired, returning stale with warning');
+                    if (self.CONFIG?.DEBUG_MODE) console.log('[Service Worker] API cache expired, returning stale with warning');
                     // Return stale data but with a warning header
                     const headers = new Headers(cachedResponse.headers);
                     headers.set('x-cache-status', 'stale');
@@ -225,7 +226,7 @@ async function networkFirstStrategy(request) {
                     });
                 }
             }
-            console.log('[Service Worker] Serving API from cache:', request.url);
+            if (self.CONFIG?.DEBUG_MODE) console.log('[Service Worker] Serving API from cache:', request.url);
             return cachedResponse;
         }
         
@@ -244,7 +245,7 @@ async function imageStrategy(request) {
     // Try cache first
     const cachedResponse = await caches.match(request);
     if (cachedResponse) {
-        console.log('[Service Worker] Serving image from cache:', request.url);
+        if (self.CONFIG?.DEBUG_MODE) console.log('[Service Worker] Serving image from cache:', request.url);
         return cachedResponse;
     }
     
@@ -264,9 +265,9 @@ async function imageStrategy(request) {
                 
                 // Cache the image
                 await cache.put(request, networkResponse.clone());
-                console.log('[Service Worker] Cached image:', request.url);
+                if (self.CONFIG?.DEBUG_MODE) console.log('[Service Worker] Cached image:', request.url);
             } else {
-                console.log('[Service Worker] Image too large to cache:', blob.size);
+                if (self.CONFIG?.DEBUG_MODE) console.log('[Service Worker] Image too large to cache:', blob.size);
             }
         }
         
@@ -306,7 +307,7 @@ async function manageCacheSize(cache) {
         const toDelete = requests.length - MAX_CACHED_IMAGES + 5; // Remove 5 extra for buffer
         for (let i = 0; i < toDelete && i < cacheEntries.length; i++) {
             await cache.delete(cacheEntries[i].request);
-            console.log('[Service Worker] Removed old cached image');
+            if (self.CONFIG?.DEBUG_MODE) console.log('[Service Worker] Removed old cached image');
         }
     }
 }
@@ -403,7 +404,7 @@ async function cacheFavoriteImage(imageUrl, objectID) {
         // Check if already cached
         const cachedResponse = await cache.match(imageUrl);
         if (cachedResponse) {
-            console.log(`[Service Worker] Favorite image already cached: ${objectID}`);
+            if (self.CONFIG?.DEBUG_MODE) console.log(`[Service Worker] Favorite image already cached: ${objectID}`);
             return;
         }
         
@@ -416,12 +417,12 @@ async function cacheFavoriteImage(imageUrl, objectID) {
             // Only cache if under size limit
             if (blob.size < 5 * 1024 * 1024) {
                 await cache.put(imageUrl, response);
-                console.log(`[Service Worker] Cached favorite image: ${objectID}`);
+                if (self.CONFIG?.DEBUG_MODE) console.log(`[Service Worker] Cached favorite image: ${objectID}`);
                 
                 // Manage cache size
                 await manageCacheSize(cache);
             } else {
-                console.log(`[Service Worker] Favorite image too large to cache: ${objectID}`);
+                if (self.CONFIG?.DEBUG_MODE) console.log(`[Service Worker] Favorite image too large to cache: ${objectID}`);
             }
         }
     } catch (error) {
@@ -439,7 +440,7 @@ async function fetchAndCache(request, cacheName) {
         }
     } catch (error) {
         // Silently fail - this is a background update
-        console.log('[Service Worker] Background update failed:', error);
+        if (self.CONFIG?.DEBUG_MODE) console.log('[Service Worker] Background update failed:', error);
     }
 }
 
@@ -457,7 +458,7 @@ async function cleanupAPICache() {
                 const age = Date.now() - new Date(cachedAt).getTime();
                 if (age > MAX_API_CACHE_AGE * 2) { // Remove if twice the max age
                     await cache.delete(request);
-                    console.log('[Service Worker] Removed expired API cache entry');
+                    if (self.CONFIG?.DEBUG_MODE) console.log('[Service Worker] Removed expired API cache entry');
                 }
             }
         }
@@ -491,7 +492,7 @@ async function manageCacheSize(cache) {
         // Remove oldest entries if we exceed the limit
         const entriesToRemove = cacheEntries.length - MAX_CACHED_IMAGES;
         if (entriesToRemove > 0) {
-            console.log(`[Service Worker] Removing ${entriesToRemove} old cache entries`);
+            if (self.CONFIG?.DEBUG_MODE) console.log(`[Service Worker] Removing ${entriesToRemove} old cache entries`);
             
             for (let i = 0; i < entriesToRemove; i++) {
                 await cache.delete(cacheEntries[i].request);
@@ -504,7 +505,7 @@ async function manageCacheSize(cache) {
             const age = now - entry.date.getTime();
             if (age > MAX_IMAGE_CACHE_AGE) {
                 await cache.delete(entry.request);
-                console.log('[Service Worker] Removed expired image:', entry.url);
+                if (self.CONFIG?.DEBUG_MODE) console.log('[Service Worker] Removed expired image:', entry.url);
             }
         }
     } catch (error) {
@@ -531,7 +532,7 @@ async function startPeriodicCleanup() {
 }
 
 async function performCacheCleanup() {
-    console.log('[Service Worker] Running cache cleanup...');
+    if (self.CONFIG?.DEBUG_MODE) console.log('[Service Worker] Running cache cleanup...');
     
     try {
         // Clean up each cache type
@@ -553,12 +554,12 @@ async function performCacheCleanup() {
         
         for (const cacheName of allCaches) {
             if (!currentCaches.has(cacheName) && cacheName.startsWith('met-art-')) {
-                console.log('[Service Worker] Removing old cache version:', cacheName);
+                if (self.CONFIG?.DEBUG_MODE) console.log('[Service Worker] Removing old cache version:', cacheName);
                 await caches.delete(cacheName);
             }
         }
         
-        console.log('[Service Worker] Cache cleanup complete');
+        if (self.CONFIG?.DEBUG_MODE) console.log('[Service Worker] Cache cleanup complete');
     } catch (error) {
         console.error('[Service Worker] Error during cache cleanup:', error);
     }

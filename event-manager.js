@@ -14,7 +14,7 @@ class EventManager {
     // Add event listener with automatic cleanup tracking
     addEventListener(element, event, handler, options = {}) {
         if (!element || !event || !handler) {
-            console.warn('EventManager: Invalid addEventListener parameters');
+            window.MetLogger?.warn('EventManager: Invalid addEventListener parameters');
             return null;
         }
 
@@ -33,7 +33,7 @@ class EventManager {
         try {
             element.addEventListener(event, handler, options);
         } catch (error) {
-            console.error('EventManager: Error adding event listener:', error);
+            window.MetLogger?.error('EventManager: Error adding event listener:', error);
             this.listeners.delete(key);
             return null;
         }
@@ -50,7 +50,7 @@ class EventManager {
             try {
                 element.removeEventListener(event, handler, options);
             } catch (error) {
-                console.error('EventManager: Error removing event listener:', error);
+                window.MetLogger?.error('EventManager: Error removing event listener:', error);
             }
             this.listeners.delete(key);
         }
@@ -59,7 +59,7 @@ class EventManager {
     // Add observer with cleanup tracking
     observe(observer, target, options = {}) {
         if (!observer || !target) {
-            console.warn('EventManager: Invalid observe parameters');
+            window.MetLogger?.warn('EventManager: Invalid observe parameters');
             return null;
         }
 
@@ -73,7 +73,7 @@ class EventManager {
         try {
             observer.observe(target, options);
         } catch (error) {
-            console.error('EventManager: Error starting observer:', error);
+            window.MetLogger?.error('EventManager: Error starting observer:', error);
             this.observers.delete(key);
             return null;
         }
@@ -90,7 +90,7 @@ class EventManager {
                 observer.unobserve(target);
                 observer.disconnect();
             } catch (error) {
-                console.error('EventManager: Error removing observer:', error);
+                window.MetLogger?.error('EventManager: Error removing observer:', error);
             }
             this.observers.delete(key);
         }
@@ -188,13 +188,13 @@ class EventManager {
         }
 
         if (cleaned > 0) {
-            console.log(`EventManager: Cleaned up ${cleaned} handlers for element`);
+            window.MetLogger?.log(`EventManager: Cleaned up ${cleaned} handlers for element`);
         }
     }
 
     // Clean up all resources
     cleanup() {
-        console.log('EventManager: Starting complete cleanup...');
+        window.MetLogger?.log('EventManager: Starting complete cleanup...');
 
         // Remove all event listeners
         for (const key of this.listeners.keys()) {
@@ -230,7 +230,7 @@ class EventManager {
         }
         this.abortControllers.clear();
 
-        console.log('EventManager: Cleanup complete');
+        window.MetLogger?.log('EventManager: Cleanup complete');
     }
 
     // Get statistics

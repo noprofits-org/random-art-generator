@@ -107,7 +107,7 @@ class ErrorHandler {
 
     handleResourceError(errorInfo) {
         // Log resource errors separately
-        console.warn('Resource Error:', errorInfo);
+        window.MetLogger?.warn('Resource Error:', errorInfo);
 
         // Don't show UI for resource errors unless critical
         if (errorInfo.type === 'script-load-error') {
@@ -217,7 +217,7 @@ class ErrorHandler {
             });
         } catch (e) {
             // Silently fail - don't want to create error loop
-            console.warn('Failed to report error:', e);
+            window.MetLogger?.warn('Failed to report error:', e);
         }
     }
 

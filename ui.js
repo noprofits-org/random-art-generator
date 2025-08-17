@@ -9,7 +9,7 @@ function initUI() {
 
     // FIXED: Add defensive checks for all DOM elements
     if (!controlsDrawer) {
-        console.error('Controls drawer element not found');
+        console.error('Controls drawer element not found - please check your HTML structure');
         return;
     }
 
@@ -47,7 +47,7 @@ function initUI() {
                 toggleDrawerButton.addEventListener('click', toggleHandler);
             }
         } else {
-            console.warn('Toggle drawer button not found');
+            window.MetLogger?.warn('Toggle drawer button not found');
         }
     }
 
@@ -107,7 +107,7 @@ function initMobileUI() {
             mobileMenuButton.addEventListener('click', openMobileDrawer);
         }
     } else {
-        console.warn('Mobile menu button not found');
+        window.MetLogger?.warn('Mobile menu button not found');
     }
     
     // Close drawer button
@@ -186,7 +186,7 @@ function removeMobileUI() {
                 document.removeEventListener('mouseup', handle._swipeHandlers.handleEnd);
             }
         } catch (error) {
-            console.error('Error removing drawer handlers:', error);
+            window.MetLogger?.error('Error removing drawer handlers:', error);
         }
         delete handle._swipeHandlers;
     }
@@ -198,7 +198,7 @@ function removeMobileUI() {
             info.removeEventListener('touchmove', info._swipeHandlers.handleMove, { passive: true });
             info.removeEventListener('touchend', info._swipeHandlers.handleEnd);
         } catch (error) {
-            console.error('Error removing info handlers:', error);
+            window.MetLogger?.error('Error removing info handlers:', error);
         }
         delete info._swipeHandlers;
     }
@@ -210,7 +210,7 @@ function removeMobileUI() {
             container.removeEventListener('touchmove', container._swipeHandlers.handleTouchMove, { passive: true });
             container.removeEventListener('touchend', container._swipeHandlers.handleTouchEnd, { passive: true });
         } catch (error) {
-            console.error('Error removing container handlers:', error);
+            window.MetLogger?.error('Error removing container handlers:', error);
         }
         delete container._swipeHandlers;
     }
@@ -249,7 +249,7 @@ function initDrawerSwipe() {
     
     // FIXED: Add null checks and proper cleanup tracking
     if (!drawer || !handle) {
-        console.warn('Drawer elements not found for swipe initialization');
+        window.MetLogger?.warn('Drawer elements not found for swipe initialization');
         return;
     }
     
@@ -386,11 +386,11 @@ function initArtworkSwipeGestures() {
         if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 50) {
             if (deltaX > 0) {
                 // Swipe right - previous artwork
-                console.log('Swipe right - previous artwork');
+                window.MetLogger?.log('Swipe right - previous artwork');
                 // Implement previous artwork logic
             } else {
                 // Swipe left - next artwork
-                console.log('Swipe left - next artwork');
+                window.MetLogger?.log('Swipe left - next artwork');
                 // Trigger random artwork button
                 const randomButton = document.getElementById('randomArtButton');
                 if (randomButton) randomButton.click();
@@ -403,7 +403,7 @@ function initArtworkSwipeGestures() {
 function addStatusIndicator() {
     // FIXED: Check if status indicator already exists
     if (document.getElementById('statusIndicator')) {
-        console.log('Status indicator already exists');
+        window.MetLogger?.log('Status indicator already exists');
         return;
     }
     
@@ -416,10 +416,10 @@ function addStatusIndicator() {
         if (document.body) {
             document.body.appendChild(statusIndicator);
         } else {
-            console.error('Document body not available for status indicator');
+            console.error('Document body not available - cannot create status indicator');
         }
     } catch (error) {
-        console.error('Error creating status indicator:', error);
+        window.MetLogger?.error('Error creating status indicator:', error);
     }
 }
 
@@ -653,12 +653,12 @@ function initOfflineDetection() {
     
     // Listen for online/offline events
     window.addEventListener('online', () => {
-        console.log('[UI] App is online');
+        window.MetLogger?.log('[UI] App is online');
         updateOnlineStatus(true);
     });
     
     window.addEventListener('offline', () => {
-        console.log('[UI] App is offline');
+        window.MetLogger?.log('[UI] App is offline');
         updateOnlineStatus(false);
     });
     
@@ -785,7 +785,7 @@ function initFavoritesView() {
     
     // FIXED: Add null checks for all elements
     if (!viewFavoritesButton || !favoritesModal) {
-        console.warn('Favorites elements not found');
+        window.MetLogger?.warn('Favorites elements not found');
         return;
     }
     
@@ -880,7 +880,7 @@ function initFavoritesView() {
 async function showFavoritesModal() {
     // FIXED: Check modal state to prevent multiple opens
     if (favoritesModalState.isOpen || favoritesModalState.isLoading) {
-        console.log('Favorites modal already open or loading');
+        window.MetLogger?.log('Favorites modal already open or loading');
         return;
     }
     
@@ -890,7 +890,7 @@ async function showFavoritesModal() {
     
     // FIXED: Add null checks
     if (!favoritesModal || !favoritesGrid || !window.MetFavorites) {
-        console.error('Required favorites elements not found');
+        console.error('Favorites feature unavailable - required elements not found');
         return;
     }
     
@@ -946,7 +946,7 @@ async function showFavoritesModal() {
         // Update state - loading complete
         favoritesModalState.isLoading = false;
     } catch (error) {
-        console.error('Error loading favorites:', error);
+        window.MetLogger?.error('Error loading favorites:', error);
         favoritesGrid.innerHTML = `
             <div class="error-message">
                 <p>Error loading favorites</p>
@@ -1021,7 +1021,7 @@ async function displayFavoriteFromModal(objectID) {
             updateStatus('Loaded from favorites', 'success');
         }
     } catch (error) {
-        console.error('Error displaying favorite:', error);
+        window.MetLogger?.error('Error displaying favorite:', error);
         updateStatus('Error loading favorite', 'error');
     }
 }
@@ -1069,7 +1069,7 @@ async function clearAllFavorites() {
         // Update status
         updateStatus('All favorites cleared', 'info');
     } catch (error) {
-        console.error('Error clearing favorites:', error);
+        window.MetLogger?.error('Error clearing favorites:', error);
         updateStatus('Error clearing favorites', 'error');
     } finally {
         // Reset state and button

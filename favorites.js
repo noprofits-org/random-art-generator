@@ -19,7 +19,7 @@ async function initFavoritesDB() {
         // Check if IndexedDB is available
         if (!window.indexedDB) {
             const error = new Error('IndexedDB is not supported in this browser');
-            console.error(error.message);
+            console.error(error.message); // Critical: IndexedDB not supported - favorites won't work
             reject(error);
             return;
         }
@@ -28,7 +28,7 @@ async function initFavoritesDB() {
         
         request.onerror = () => {
             const error = request.error || new Error('Failed to open favorites database');
-            console.error('IndexedDB error:', error);
+            window.MetLogger?.error('IndexedDB error:', error);
             reject(error);
         };
         
@@ -37,17 +37,17 @@ async function initFavoritesDB() {
             
             // Handle database errors
             db.onerror = (event) => {
-                console.error('Database error:', event.target.error);
+                window.MetLogger?.error('Database error:', event.target.error);
             };
             
             // Handle version change
             db.onversionchange = () => {
                 db.close();
                 db = null;
-                console.log('Database version changed, connection closed');
+                window.MetLogger?.log('Database version changed, connection closed');
             };
             
-            console.log('Favorites database opened successfully');
+            window.MetLogger?.log('Favorites database opened successfully');
             resolve(db);
         };
         
@@ -65,12 +65,12 @@ async function initFavoritesDB() {
                 objectStore.createIndex('department', 'department', { unique: false });
                 objectStore.createIndex('isHighlight', 'isHighlight', { unique: false });
                 
-                console.log('Favorites object store created');
+                window.MetLogger?.log('Favorites object store created');
             }
         };
         
         request.onblocked = () => {
-            console.warn('Database blocked by another connection');
+            window.MetLogger?.warn('Database blocked by another connection');
         };
     });
 }
@@ -83,7 +83,7 @@ async function createThumbnail(imageUrl) {
         
         // Set timeout for image loading
         const timeout = setTimeout(() => {
-            console.warn('Thumbnail creation timed out');
+            window.MetLogger?.warn('Thumbnail creation timed out');
             img.src = ''; // Cancel loading
             resolve(null);
         }, 5000); // 5 second timeout
@@ -96,7 +96,7 @@ async function createThumbnail(imageUrl) {
                 const ctx = canvas.getContext('2d');
                 
                 if (!ctx) {
-                    console.error('Canvas context not available');
+                    window.MetLogger?.error('Canvas context not available');
                     resolve(null);
                     return;
                 }
@@ -131,14 +131,14 @@ async function createThumbnail(imageUrl) {
                 const dataUrl = canvas.toDataURL('image/webp', 0.85);
                 resolve(dataUrl.includes('data:image/webp') ? dataUrl : canvas.toDataURL('image/jpeg', 0.85));
             } catch (error) {
-                console.error('Error creating thumbnail:', error);
+                window.MetLogger?.error('Error creating thumbnail:', error);
                 resolve(null);
             }
         };
         
         img.onerror = () => {
             clearTimeout(timeout);
-            console.error('Failed to load image for thumbnail');
+            window.MetLogger?.error('Failed to load image for thumbnail');
             resolve(null);
         };
         
@@ -206,18 +206,18 @@ async function addToFavorites(artwork) {
         
         // Set up transaction error handling
         transaction.onerror = () => {
-            console.error('Transaction error:', transaction.error);
+            window.MetLogger?.error('Transaction error:', transaction.error);
         };
         
         transaction.onabort = () => {
-            console.error('Transaction aborted');
+            window.MetLogger?.error('Transaction aborted');
         };
         
         const request = objectStore.put(favorite);
         
         return new Promise((resolve, reject) => {
             transaction.oncomplete = () => {
-                console.log(`Added artwork ${artwork.objectID} to favorites`);
+                window.MetLogger?.log(`Added artwork ${artwork.objectID} to favorites`);
                 
                 // Notify service worker to cache the image
                 if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
@@ -228,7 +228,7 @@ async function addToFavorites(artwork) {
                             imageUrl: artwork.primaryImage
                         });
                     } catch (error) {
-                        console.warn('Failed to notify service worker:', error);
+                        window.MetLogger?.warn('Failed to notify service worker:', error);
                     }
                 }
                 
@@ -242,12 +242,12 @@ async function addToFavorites(artwork) {
             
             request.onerror = () => {
                 const error = request.error || new Error('Failed to add favorite');
-                console.error('Failed to add favorite:', error);
+                window.MetLogger?.error('Failed to add favorite:', error);
                 reject(error);
             };
         });
     } catch (error) {
-        console.error('Error adding to favorites:', error);
+        window.MetLogger?.error('Error adding to favorites:', error);
         
         // Show user-friendly error message
         if (window.MetUI && window.MetUI.showError) {
@@ -268,12 +268,12 @@ async function removeFromFavorites(objectID) {
     
     return new Promise((resolve, reject) => {
         request.onsuccess = () => {
-            console.log(`Removed artwork ${objectID} from favorites`);
+            window.MetLogger?.log(`Removed artwork ${objectID} from favorites`);
             resolve(true);
         };
         
         request.onerror = () => {
-            console.error('Failed to remove favorite');
+            window.MetLogger?.error('Failed to remove favorite');
             reject(request.error);
         };
     });
@@ -293,7 +293,7 @@ async function isFavorited(objectID) {
         };
         
         request.onerror = () => {
-            console.error('Failed to check favorite status');
+            window.MetLogger?.error('Failed to check favorite status');
             reject(request.error);
         };
     });
@@ -322,7 +322,7 @@ async function getAllFavorites() {
         };
         
         request.onerror = () => {
-            console.error('Failed to get favorites');
+            window.MetLogger?.error('Failed to get favorites');
             reject(request.error);
         };
     });
@@ -342,7 +342,7 @@ async function getFavorite(objectID) {
         };
         
         request.onerror = () => {
-            console.error('Failed to get favorite');
+            window.MetLogger?.error('Failed to get favorite');
             reject(request.error);
         };
     });
@@ -362,7 +362,7 @@ async function getFavoritesCount() {
         };
         
         request.onerror = () => {
-            console.error('Failed to get favorites count');
+            window.MetLogger?.error('Failed to get favorites count');
             reject(request.error);
         };
     });
@@ -382,7 +382,7 @@ async function removeOldestFavorite() {
             const cursor = event.target.result;
             if (cursor) {
                 objectStore.delete(cursor.value.objectID);
-                console.log(`Removed oldest favorite: ${cursor.value.objectID}`);
+                window.MetLogger?.log(`Removed oldest favorite: ${cursor.value.objectID}`);
                 resolve(true);
             } else {
                 resolve(false);
@@ -390,7 +390,7 @@ async function removeOldestFavorite() {
         };
         
         request.onerror = () => {
-            console.error('Failed to remove oldest favorite');
+            window.MetLogger?.error('Failed to remove oldest favorite');
             reject(request.error);
         };
     });
@@ -406,12 +406,12 @@ async function clearAllFavorites() {
     
     return new Promise((resolve, reject) => {
         request.onsuccess = () => {
-            console.log('Cleared all favorites');
+            window.MetLogger?.log('Cleared all favorites');
             resolve(true);
         };
         
         request.onerror = () => {
-            console.error('Failed to clear favorites');
+            window.MetLogger?.error('Failed to clear favorites');
             reject(request.error);
         };
     });
@@ -436,7 +436,7 @@ let initPromise = null;
 async function ensureFavoritesInitialized() {
     if (!initPromise) {
         initPromise = initFavoritesDB().catch(error => {
-            console.error('Failed to initialize favorites:', error);
+            console.error('Failed to initialize favorites database. Favorites feature will not work.', error); // Critical: Database initialization failure
             initPromise = null; // Allow retry
             throw error;
         });

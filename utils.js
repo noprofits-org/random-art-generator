@@ -40,7 +40,7 @@ function safeLocalStorageGet(key, defaultValue = null) {
         const item = localStorage.getItem(key);
         return item ? JSON.parse(item) : defaultValue;
     } catch (error) {
-        console.error(`Error reading from localStorage (${key}):`, error);
+        window.MetLogger?.error(`Error reading from localStorage (${key}):`, error);
         return defaultValue;
     }
 }
@@ -50,7 +50,7 @@ function safeLocalStorageSet(key, value) {
         localStorage.setItem(key, JSON.stringify(value));
         return true;
     } catch (error) {
-        console.error(`Error writing to localStorage (${key}):`, error);
+        window.MetLogger?.error(`Error writing to localStorage (${key}):`, error);
         return false;
     }
 }
@@ -60,7 +60,7 @@ function safeLocalStorageRemove(key) {
         localStorage.removeItem(key);
         return true;
     } catch (error) {
-        console.error(`Error removing from localStorage (${key}):`, error);
+        window.MetLogger?.error(`Error removing from localStorage (${key}):`, error);
         return false;
     }
 }
@@ -88,7 +88,7 @@ async function retryWithBackoff(fn, options = {}) {
             const jitter = Math.random() * jitterFactor * baseDelay;
             const delay = Math.min(baseDelay + jitter, maxDelay);
             
-            console.log(`Retry attempt ${attempt + 1}/${maxRetries} after ${Math.round(delay)}ms`);
+            window.MetLogger?.log(`Retry attempt ${attempt + 1}/${maxRetries} after ${Math.round(delay)}ms`);
             await sleep(delay);
         }
     }
@@ -219,7 +219,7 @@ function loadImage(src, options = {}) {
 
 async function preloadImages(urls, options = {}) {
     const promises = urls.map(url => loadImage(url, options).catch(err => {
-        console.warn(`Failed to preload image: ${url}`, err);
+        window.MetLogger?.warn(`Failed to preload image: ${url}`, err);
         return null;
     }));
     

@@ -182,7 +182,7 @@ class StateManager {
                 try {
                     callback(newValue, oldValue, path);
                 } catch (error) {
-                    console.error('Subscriber error:', error);
+                    window.MetLogger?.error('Subscriber error:', error);
                 }
             });
         }
@@ -198,7 +198,7 @@ class StateManager {
                     try {
                         callback(this.getState(parentPath), null, parentPath);
                     } catch (error) {
-                        console.error('Parent subscriber error:', error);
+                        window.MetLogger?.error('Parent subscriber error:', error);
                     }
                 });
             }
@@ -211,7 +211,7 @@ class StateManager {
                 try {
                     callback(this.state, null, path);
                 } catch (error) {
-                    console.error('Wildcard subscriber error:', error);
+                    window.MetLogger?.error('Wildcard subscriber error:', error);
                 }
             });
         }
@@ -301,7 +301,7 @@ class StateManager {
                 }
             }
         } catch (error) {
-            console.error('Error loading persisted state:', error);
+            window.MetLogger?.error('Error loading persisted state:', error);
         }
     }
     
@@ -318,7 +318,7 @@ class StateManager {
             
             localStorage.setItem('metArtState', JSON.stringify(toSave));
         } catch (error) {
-            console.error('Error saving state:', error);
+            window.MetLogger?.error('Error saving state:', error);
         }
     }
     

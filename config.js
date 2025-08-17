@@ -1,3 +1,4 @@
+// PRODUCTION BUILD: Console logging disabled except for errors
 // config.js - Configuration settings for the Met Art Generator
 
 // API configuration
@@ -17,10 +18,11 @@ const CONFIG = {
     // Delay between retries in milliseconds
     RETRY_DELAY: 1000,
     
-    // FIXED: Added debug mode configuration
-    DEBUG_MODE: window.location.hostname === 'localhost' || 
-                window.location.hostname === '127.0.0.1' ||
-                window.location.search.includes('debug=true'),
+    // Debug mode configuration (set to false for production)
+    DEBUG_MODE: false,
+    // DEBUG_MODE: window.location.hostname === 'localhost' || 
+    //             window.location.hostname === '127.0.0.1' ||
+    //             window.location.search.includes('debug=true'),
     
     // Performance configuration
     SEARCH_RESULTS_PER_PAGE: 20,
@@ -49,13 +51,20 @@ const MetLogger = {
     },
     
     warn: (...args) => {
-        // Always show warnings
-        console.warn('[Met]', ...args);
+        if (CONFIG.DEBUG_MODE) {
+            console.warn('[Met]', ...args);
+        }
     },
     
     error: (...args) => {
-        // Always show errors
-        console.error('[Met]', ...args);
+        // Always show errors but sanitize for production
+        const sanitizedArgs = args.map(arg => {
+            if (arg instanceof Error) {
+                return `Error: ${arg.message}`;
+            }
+            return arg;
+        });
+        console.error('[Met]', ...sanitizedArgs);
     },
     
     debug: (...args) => {

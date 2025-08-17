@@ -1,10 +1,12 @@
 // Service Worker for Met Art Generator
-// Version: 1.1.0
+// Version: 1.2.0
 
-const CACHE_NAME = 'met-art-generator-v1';
-const API_CACHE_NAME = 'met-art-api-v1';
-const IMAGE_CACHE_NAME = 'met-art-images-v1';
+const CACHE_NAME = 'met-art-generator-v1.2';
+const API_CACHE_NAME = 'met-art-api-v1.2';
+const IMAGE_CACHE_NAME = 'met-art-images-v1.2';
 const MAX_CACHED_IMAGES = 50;
+const MAX_API_CACHE_AGE = 30 * 60 * 1000; // 30 minutes
+const MAX_IMAGE_CACHE_AGE = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 // Static assets to cache on install
 const STATIC_ASSETS = [
@@ -38,7 +40,14 @@ self.addEventListener('install', (event) => {
         caches.open(CACHE_NAME)
             .then((cache) => {
                 console.log('[Service Worker] Caching static assets');
-                return cache.addAll(STATIC_ASSETS);
+                // Use addAll with error handling for individual files
+                return Promise.all(
+                    STATIC_ASSETS.map(url => {
+                        return cache.add(url).catch(err => {
+                            console.warn(`[Service Worker] Failed to cache ${url}:`, err);
+                        });
+                    })
+                );
             })
             .then(() => {
                 console.log('[Service Worker] Installation complete');
@@ -112,6 +121,19 @@ async function cacheFirstStrategy(request) {
         const cachedResponse = await caches.match(request);
         
         if (cachedResponse) {
+            // Check if cache is stale
+            const cachedDate = new Date(cachedResponse.headers.get('date'));
+            const now = new Date();
+            const age = now - cachedDate;
+            
+            // For HTML files, always try to fetch fresh version in background
+            if (request.mode === 'navigate' || request.url.endsWith('.html')) {
+                console.log('[Service Worker] Serving from cache and updating:', request.url);
+                // Return cached version immediately but update in background
+                fetchAndCache(request, CACHE_NAME);
+                return cachedResponse;
+            }
+            
             console.log('[Service Worker] Serving from cache:', request.url);
             return cachedResponse;
         }
@@ -151,15 +173,24 @@ async function networkFirstStrategy(request) {
         console.log('[Service Worker] Fetching API from network:', request.url);
         const networkResponse = await fetch(request);
         
-        // Cache successful API responses
+        // Cache successful API responses with timestamp
         if (networkResponse && networkResponse.status === 200) {
             const cache = await caches.open(API_CACHE_NAME);
-            cache.put(request, networkResponse.clone());
+            // Add custom headers with cache timestamp
+            const responseToCache = networkResponse.clone();
+            const headers = new Headers(responseToCache.headers);
+            headers.append('sw-cached-at', new Date().toISOString());
             
-            // If this is a departments request, cache it longer
-            if (request.url.includes('/departments')) {
-                console.log('[Service Worker] Caching departments data');
-            }
+            const cachedResponse = new Response(responseToCache.body, {
+                status: responseToCache.status,
+                statusText: responseToCache.statusText,
+                headers: headers
+            });
+            
+            cache.put(request, cachedResponse);
+            
+            // Clean up old API cache entries
+            cleanupAPICache();
         }
         
         return networkResponse;
@@ -170,6 +201,22 @@ async function networkFirstStrategy(request) {
         const cachedResponse = await caches.match(request);
         
         if (cachedResponse) {
+            // Check cache age
+            const cachedAt = cachedResponse.headers.get('sw-cached-at');
+            if (cachedAt) {
+                const age = Date.now() - new Date(cachedAt).getTime();
+                if (age > MAX_API_CACHE_AGE) {
+                    console.log('[Service Worker] API cache expired, returning stale with warning');
+                    // Return stale data but with a warning header
+                    const headers = new Headers(cachedResponse.headers);
+                    headers.set('x-cache-status', 'stale');
+                    return new Response(cachedResponse.body, {
+                        status: cachedResponse.status,
+                        statusText: cachedResponse.statusText,
+                        headers: headers
+                    });
+                }
+            }
             console.log('[Service Worker] Serving API from cache:', request.url);
             return cachedResponse;
         }
@@ -232,10 +279,25 @@ async function manageCacheSize(cache) {
     const requests = await cache.keys();
     
     if (requests.length >= MAX_CACHED_IMAGES) {
-        // Remove oldest entries (FIFO)
-        const toDelete = requests.length - MAX_CACHED_IMAGES + 1;
-        for (let i = 0; i < toDelete; i++) {
-            await cache.delete(requests[i]);
+        // Get cache entries with their timestamps
+        const cacheEntries = await Promise.all(
+            requests.map(async (request) => {
+                const response = await cache.match(request);
+                const dateHeader = response.headers.get('date') || response.headers.get('sw-cached-at');
+                return {
+                    request,
+                    timestamp: dateHeader ? new Date(dateHeader).getTime() : 0
+                };
+            })
+        );
+        
+        // Sort by timestamp (oldest first)
+        cacheEntries.sort((a, b) => a.timestamp - b.timestamp);
+        
+        // Remove oldest entries
+        const toDelete = requests.length - MAX_CACHED_IMAGES + 5; // Remove 5 extra for buffer
+        for (let i = 0; i < toDelete && i < cacheEntries.length; i++) {
+            await cache.delete(cacheEntries[i].request);
             console.log('[Service Worker] Removed old cached image');
         }
     }
@@ -356,5 +418,42 @@ async function cacheFavoriteImage(imageUrl, objectID) {
         }
     } catch (error) {
         console.error(`[Service Worker] Error caching favorite image:`, error);
+    }
+}
+
+// Helper function to fetch and cache in background
+async function fetchAndCache(request, cacheName) {
+    try {
+        const response = await fetch(request);
+        if (response && response.status === 200) {
+            const cache = await caches.open(cacheName);
+            cache.put(request, response);
+        }
+    } catch (error) {
+        // Silently fail - this is a background update
+        console.log('[Service Worker] Background update failed:', error);
+    }
+}
+
+// Clean up old API cache entries
+async function cleanupAPICache() {
+    try {
+        const cache = await caches.open(API_CACHE_NAME);
+        const requests = await cache.keys();
+        
+        for (const request of requests) {
+            const response = await cache.match(request);
+            const cachedAt = response.headers.get('sw-cached-at');
+            
+            if (cachedAt) {
+                const age = Date.now() - new Date(cachedAt).getTime();
+                if (age > MAX_API_CACHE_AGE * 2) { // Remove if twice the max age
+                    await cache.delete(request);
+                    console.log('[Service Worker] Removed expired API cache entry');
+                }
+            }
+        }
+    } catch (error) {
+        console.error('[Service Worker] Error cleaning API cache:', error);
     }
 }

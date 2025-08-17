@@ -1,8 +1,5 @@
 // filters.js - Functions related to handling artwork filters
 
-// Debounce timer for search input
-let searchDebounceTimer = null;
-
 // Initialize the filters with appropriate ranges
 async function initFilters() {
     await populateDepartmentDropdown();
@@ -138,70 +135,65 @@ function setupTextSearch() {
         return;
     }
     
-    // Handle search button click
+    // Create debounced search function using utils
+    const debouncedSearch = window.MetUtils ? 
+        window.MetUtils.debounce((query) => {
+            if (query) {
+                performSearch(query);
+            }
+        }, 500) : 
+        // Fallback if utils not loaded
+        (() => {
+            let timer;
+            return (query) => {
+                clearTimeout(timer);
+                timer = setTimeout(() => {
+                    if (query) performSearch(query);
+                }, 500);
+            };
+        })();
+    
+    // Handle search button click - immediate search
     searchButton.addEventListener('click', () => {
         const value = searchInput.value.trim();
         if (value) {
-<<<<<<< HEAD
-            // Clear any pending debounce
-            if (searchDebounceTimer) {
-                clearTimeout(searchDebounceTimer);
-                searchDebounceTimer = null;
-            }
-=======
->>>>>>> e11e5c042be9f74d6269222c66544f41a7623c22
+            // Cancel any pending debounced search
+            debouncedSearch.cancel?.();
             performSearch(value);
         }
     });
     
-    // Handle Enter key in search input
+    // Handle Enter key in search input - immediate search
     searchInput.addEventListener('keypress', (e) => {
         if (e.key === 'Enter') {
+            e.preventDefault(); // Prevent form submission
             const value = searchInput.value.trim();
             if (value) {
-<<<<<<< HEAD
-                // Clear any pending debounce
-                if (searchDebounceTimer) {
-                    clearTimeout(searchDebounceTimer);
-                    searchDebounceTimer = null;
-                }
-=======
->>>>>>> e11e5c042be9f74d6269222c66544f41a7623c22
+                // Cancel any pending debounced search
+                debouncedSearch.cancel?.();
                 performSearch(value);
             }
         }
     });
     
-<<<<<<< HEAD
     // Handle input changes with debouncing
     searchInput.addEventListener('input', (e) => {
         const value = e.target.value.trim();
         
-        // Clear any existing debounce timer
-        if (searchDebounceTimer) {
-            clearTimeout(searchDebounceTimer);
-        }
-        
-=======
-    // Handle input changes (for clearing search)
-    searchInput.addEventListener('input', (e) => {
-        const value = e.target.value.trim();
->>>>>>> e11e5c042be9f74d6269222c66544f41a7623c22
         if (!value) {
             // Clear search when input is empty
+            debouncedSearch.cancel?.();
             if (window.MetUI && window.MetUI.clearSearch) {
                 window.MetUI.clearSearch();
             }
-<<<<<<< HEAD
-            searchDebounceTimer = null;
         } else {
-            // Set up debounce timer for automatic search
-            searchDebounceTimer = setTimeout(() => {
-                performSearch(value);
-                searchDebounceTimer = null;
-            }, 500); // 500ms delay
+            // Trigger debounced search
+            debouncedSearch(value);
         }
     });
+    
+    // Store reference for cleanup if needed
+    searchInput._debouncedSearch = debouncedSearch;
 }
 
 // Perform search
@@ -230,20 +222,104 @@ function setupAdvancedSearch() {
         toggleButton.innerHTML = isVisible 
             ? '<i class="fas fa-cog"></i> Advanced Search'
             : '<i class="fas fa-cog"></i> Hide Advanced Search';
+            
+        // Store state in localStorage
+        if (window.localStorage) {
+            localStorage.setItem('advancedSearchVisible', !isVisible);
+        }
     });
-=======
+    
+    // Restore advanced search visibility from localStorage
+    if (window.localStorage) {
+        const wasVisible = localStorage.getItem('advancedSearchVisible') === 'true';
+        if (wasVisible) {
+            advancedFields.style.display = 'block';
+            toggleButton.innerHTML = '<i class="fas fa-cog"></i> Hide Advanced Search';
+        }
+    }
+    
+    // Connect advanced search field events
+    connectAdvancedSearchFields();
+}
+
+// Connect event listeners to advanced search fields
+function connectAdvancedSearchFields() {
+    // Text input fields that should trigger search on change
+    const advancedTextFields = [
+        'geoLocationInput',
+        'excavationInput',
+        'titleInput'
+    ];
+    
+    // Add debounced search to advanced text fields
+    advancedTextFields.forEach(fieldId => {
+        const field = document.getElementById(fieldId);
+        if (field) {
+            // Create individual debounced handler for each field
+            const debouncedHandler = window.MetUtils ? 
+                window.MetUtils.debounce(() => {
+                    const value = field.value.trim();
+                    if (value) {
+                        console.log(`Advanced search field ${fieldId} changed:`, value);
+                        triggerAdvancedSearch();
+                    }
+                }, 750) : // Slightly longer delay for advanced fields
+                null;
+                
+            if (debouncedHandler) {
+                field.addEventListener('input', debouncedHandler);
+                field._debouncedHandler = debouncedHandler;
+            }
+            
+            // Handle Enter key for immediate search
+            field.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    if (field._debouncedHandler) {
+                        field._debouncedHandler.cancel();
+                    }
+                    triggerAdvancedSearch();
+                }
+            });
+        }
+    });
+    
+    // Checkbox fields that should trigger search immediately
+    const checkboxFields = [
+        'artistOrCultureCheckbox',
+        'isHighlightCheckbox',
+        'isPublicDomainCheckbox'
+    ];
+    
+    checkboxFields.forEach(fieldId => {
+        const checkbox = document.getElementById(fieldId);
+        if (checkbox) {
+            checkbox.addEventListener('change', () => {
+                console.log(`Checkbox ${fieldId} changed:`, checkbox.checked);
+                triggerAdvancedSearch();
+            });
         }
     });
 }
 
-// Perform search
-function performSearch(query) {
-    console.log('Search query:', query);
-    // Trigger search through UI
-    if (window.MetUI && window.MetUI.triggerSearch) {
-        window.MetUI.triggerSearch(query, 'quick');
+// Trigger advanced search with current filters
+function triggerAdvancedSearch() {
+    const filters = getCurrentFilters();
+    
+    // Check if we have any search criteria
+    const hasSearchCriteria = filters.searchQuery || filters.title || 
+                             filters.geoLocation || filters.excavation ||
+                             filters.departmentId || filters.medium ||
+                             (filters.dateBegin && filters.dateEnd);
+    
+    if (hasSearchCriteria) {
+        console.log('Triggering advanced search with filters:', filters);
+        if (window.MetUI && window.MetUI.triggerSearch) {
+            window.MetUI.triggerSearch(filters.searchQuery || '*', 'advanced', filters);
+        }
+    } else {
+        console.log('No search criteria provided for advanced search');
     }
->>>>>>> e11e5c042be9f74d6269222c66544f41a7623c22
 }
 
 
@@ -255,7 +331,6 @@ function getCurrentFilters() {
     const medium = document.getElementById('mediumSelect')?.value || '';
     const searchQuery = document.getElementById('searchInput')?.value.trim() || '';
     
-<<<<<<< HEAD
     // Advanced search fields
     const geoLocation = document.getElementById('geoLocationInput')?.value.trim() || '';
     const excavation = document.getElementById('excavationInput')?.value.trim() || '';
@@ -263,9 +338,6 @@ function getCurrentFilters() {
     const artistOrCulture = document.getElementById('artistOrCultureCheckbox')?.checked || false;
     const isHighlight = document.getElementById('isHighlightCheckbox')?.checked || false;
     const isPublicDomain = document.getElementById('isPublicDomainCheckbox')?.checked || false;
-=======
-    // No more object type filters in simplified interface
->>>>>>> e11e5c042be9f74d6269222c66544f41a7623c22
     
     // Build the filters object
     const filters = {};
@@ -275,15 +347,12 @@ function getCurrentFilters() {
     if (dateEnd) filters.dateEnd = dateEnd;
     if (medium) filters.medium = medium;
     if (searchQuery) filters.searchQuery = searchQuery;
-<<<<<<< HEAD
     if (geoLocation) filters.geoLocation = geoLocation;
     if (excavation) filters.excavation = excavation;
     if (title) filters.title = title;
     if (artistOrCulture) filters.artistOrCulture = artistOrCulture;
     if (isHighlight) filters.isHighlight = isHighlight;
     if (isPublicDomain !== undefined) filters.isPublicDomain = isPublicDomain;
-=======
->>>>>>> e11e5c042be9f74d6269222c66544f41a7623c22
     
     return filters;
 }
@@ -291,5 +360,7 @@ function getCurrentFilters() {
 // Make functions available globally
 window.MetFilters = {
     initFilters,
-    getCurrentFilters
+    getCurrentFilters,
+    triggerAdvancedSearch,
+    connectAdvancedSearchFields
 };

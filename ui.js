@@ -91,8 +91,42 @@ function initMobileUI() {
 // Remove mobile UI event listeners
 function removeMobileUI() {
     const controlsDrawer = document.getElementById('controlsDrawer');
-    controlsDrawer.classList.remove('active');
-    document.getElementById('mobileOverlay').classList.remove('active');
+    const info = document.getElementById('artworkInfo');
+    const container = document.getElementById('artworkContainer');
+    
+    // Clean up event handlers
+    const handle = controlsDrawer?.querySelector('.mobile-drawer-handle');
+    
+    // Remove drawer swipe handlers
+    if (handle && handle._swipeHandlers) {
+        handle.removeEventListener('touchstart', handle._swipeHandlers.handleStart);
+        handle.removeEventListener('touchmove', handle._swipeHandlers.handleMove);
+        handle.removeEventListener('touchend', handle._swipeHandlers.handleEnd);
+        handle.removeEventListener('mousedown', handle._swipeHandlers.handleStart);
+        delete handle._swipeHandlers;
+    }
+    
+    // Remove info swipe handlers
+    if (info && info._swipeHandlers) {
+        info.removeEventListener('touchstart', info._swipeHandlers.handleStart);
+        info.removeEventListener('touchmove', info._swipeHandlers.handleMove);
+        info.removeEventListener('touchend', info._swipeHandlers.handleEnd);
+        delete info._swipeHandlers;
+    }
+    
+    // Remove container swipe handlers
+    if (container && container._swipeHandlers) {
+        container.removeEventListener('touchstart', container._swipeHandlers.handleTouchStart);
+        container.removeEventListener('touchmove', container._swipeHandlers.handleTouchMove);
+        container.removeEventListener('touchend', container._swipeHandlers.handleTouchEnd);
+        delete container._swipeHandlers;
+    }
+    
+    // Reset UI state
+    controlsDrawer?.classList.remove('active');
+    document.getElementById('mobileOverlay')?.classList.remove('active');
+    document.body.style.overflow = '';
+    document.body.classList.remove('mobile');
 }
 
 // Open mobile drawer

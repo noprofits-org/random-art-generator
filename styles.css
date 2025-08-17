@@ -701,9 +701,10 @@ mark {
 
 /* Mobile styles */
 @media (max-width: 768px) {
-    /* Prevent horizontal scroll */
+    /* Prevent horizontal scroll and optimize touch */
     body {
         overflow-x: hidden;
+        touch-action: pan-y;
     }
     
     /* Smooth scrolling */
@@ -711,7 +712,28 @@ mark {
     .search-results-container,
     .artwork-info {
         -webkit-overflow-scrolling: touch;
+        overscroll-behavior: contain;
     }
+    /* Touch optimization for interactive elements */
+    .mobile-drawer-handle {
+        touch-action: pan-y;
+        user-select: none;
+        -webkit-user-select: none;
+    }
+    
+    .artwork-container {
+        touch-action: pan-y pinch-zoom;
+    }
+    
+    .artwork-info {
+        touch-action: pan-y;
+    }
+    
+    /* Prevent accidental taps on overlays */
+    .mobile-overlay {
+        touch-action: none;
+    }
+    
     /* Show/hide mobile elements */
     .mobile-only {
         display: block;
@@ -740,6 +762,8 @@ mark {
         gap: 8px;
         min-height: 48px;
         cursor: pointer;
+        touch-action: manipulation;
+        -webkit-tap-highlight-color: transparent;
     }
     
     .mobile-menu-button i {

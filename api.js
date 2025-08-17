@@ -7,6 +7,19 @@ const REQUEST_TIMEOUT = window.MetConfig ? window.MetConfig.REQUEST_TIMEOUT : 15
 const MAX_RETRIES = window.MetConfig ? window.MetConfig.MAX_RETRIES : 3;
 const RETRY_DELAY = window.MetConfig ? window.MetConfig.RETRY_DELAY : 1000;
 
+// Alternative CORS proxies for fallback
+const CORS_PROXY_FALLBACKS = [
+    'https://corsproxy.io/?',
+    'https://api.allorigins.win/raw?url='
+];
+
+// Rate limiting configuration
+const RATE_LIMIT_WINDOW = 1000; // 1 second window
+const MAX_REQUESTS_PER_WINDOW = 5; // Max 5 requests per second
+const requestQueue = [];
+const requestTimestamps = [];
+let isProcessingQueue = false;
+
 // Function to create a promise that rejects after a timeout
 function timeoutPromise(ms) {
     return new Promise((_, reject) => {
@@ -22,6 +35,52 @@ function calculateBackoffDelay(retryCount) {
     const baseDelay = RETRY_DELAY * Math.pow(2, retryCount);
     const jitter = Math.random() * 0.3 * baseDelay; // Add up to 30% jitter
     return Math.min(baseDelay + jitter, 30000); // Cap at 30 seconds
+}
+
+// Rate limiting queue management
+async function processRequestQueue() {
+    if (isProcessingQueue || requestQueue.length === 0) {
+        return;
+    }
+    
+    isProcessingQueue = true;
+    
+    while (requestQueue.length > 0) {
+        // Clean up old timestamps
+        const now = Date.now();
+        const windowStart = now - RATE_LIMIT_WINDOW;
+        while (requestTimestamps.length > 0 && requestTimestamps[0] < windowStart) {
+            requestTimestamps.shift();
+        }
+        
+        // Check if we can make a request
+        if (requestTimestamps.length < MAX_REQUESTS_PER_WINDOW) {
+            const { fn, resolve, reject } = requestQueue.shift();
+            requestTimestamps.push(now);
+            
+            try {
+                const result = await fn();
+                resolve(result);
+            } catch (error) {
+                reject(error);
+            }
+        } else {
+            // Wait until the next window
+            const oldestTimestamp = requestTimestamps[0];
+            const waitTime = oldestTimestamp + RATE_LIMIT_WINDOW - now + 10; // Add 10ms buffer
+            await new Promise(resolve => setTimeout(resolve, waitTime));
+        }
+    }
+    
+    isProcessingQueue = false;
+}
+
+// Add request to rate limiting queue
+function queueRequest(fn) {
+    return new Promise((resolve, reject) => {
+        requestQueue.push({ fn, resolve, reject });
+        processRequestQueue();
+    });
 }
 
 // Fetch with timeout and retries with exponential backoff
@@ -55,7 +114,8 @@ async function fetchWithRetry(url, options = {}, retries = 0) {
         // If we have retries left, retry after a delay
         if (retries < MAX_RETRIES) {
             const delay = calculateBackoffDelay(retries);
-            console.log(`Fetch attempt failed, retrying in ${Math.round(delay)}ms... (${retries + 1}/${MAX_RETRIES})`);
+            console.log(`Fetch attempt failed: ${error.message}`);
+            console.log(`Retrying in ${Math.round(delay)}ms... (${retries + 1}/${MAX_RETRIES})`);
             await new Promise(resolve => setTimeout(resolve, delay));
             return fetchWithRetry(url, options, retries + 1);
         }
@@ -65,10 +125,18 @@ async function fetchWithRetry(url, options = {}, retries = 0) {
     }
 }
 
-// Fetch API data through the proxy
-async function fetchWithProxy(endpoint, retries = 0) {
+// Fetch API data through the proxy with fallback proxies
+async function fetchWithProxy(endpoint, retries = 0, proxyIndex = 0) {
     const targetUrl = `${MET_API_BASE_URL}${endpoint}`;
-    const proxyUrl = `${CORS_PROXY_URL}?url=${encodeURIComponent(targetUrl)}`;
+    
+    // Select the current proxy to use
+    let currentProxy = CORS_PROXY_URL;
+    if (proxyIndex > 0 && proxyIndex <= CORS_PROXY_FALLBACKS.length) {
+        currentProxy = CORS_PROXY_FALLBACKS[proxyIndex - 1];
+        console.log(`Using fallback proxy #${proxyIndex}: ${currentProxy}`);
+    }
+    
+    const proxyUrl = `${currentProxy}${currentProxy.includes('?') ? '' : '?url='}${encodeURIComponent(targetUrl)}`;
     
     console.log(`Fetching from proxy: ${proxyUrl}`);
     
@@ -109,7 +177,8 @@ async function fetchWithProxy(endpoint, retries = 0) {
                     return data;
                 } catch (parseError) {
                     console.error('Error parsing JSON from stream:', parseError);
-                    throw parseError;
+                    console.error('First 500 chars of response:', result.substring(0, 500));
+                    throw new Error('Invalid JSON response from API');
                 }
             } catch (streamError) {
                 console.error('Error streaming response:', streamError);
@@ -123,21 +192,34 @@ async function fetchWithProxy(endpoint, retries = 0) {
                 console.log('Fetch successful');
                 return data;
             } catch (parseError) {
-                console.error('Invalid JSON response from proxy:', text.substring(0, 500));
-                throw new Error('Invalid JSON response');
+                console.error('Invalid JSON response from proxy:', parseError);
+                console.error('First 500 chars of response:', text.substring(0, 500));
+                // Check if it's an HTML error page
+                if (text.includes('<!DOCTYPE') || text.includes('<html')) {
+                    throw new Error('Proxy returned HTML instead of JSON - possible CORS or proxy error');
+                }
+                throw new Error('Invalid JSON response from API');
             }
         }
     } catch (error) {
-        // If we have retries left, retry the entire proxy call
-        if (retries < MAX_RETRIES) {
-            const delay = calculateBackoffDelay(retries);
-            console.warn(`Proxy request failed, retrying in ${Math.round(delay)}ms... (${retries + 1}/${MAX_RETRIES})`);
-            await new Promise(resolve => setTimeout(resolve, delay));
-            return fetchWithProxy(endpoint, retries + 1);
+        console.error(`Proxy request failed:`, error);
+        
+        // Try next proxy if available
+        if (proxyIndex < CORS_PROXY_FALLBACKS.length) {
+            console.log(`Trying fallback proxy ${proxyIndex + 1}/${CORS_PROXY_FALLBACKS.length}`);
+            return fetchWithProxy(endpoint, 0, proxyIndex + 1);
         }
         
-        console.error(`Proxy request failed after ${MAX_RETRIES} retries:`, error);
-        throw error;
+        // If we have retries left for the current proxy, retry
+        if (retries < MAX_RETRIES) {
+            const delay = calculateBackoffDelay(retries);
+            console.warn(`Retrying current proxy in ${Math.round(delay)}ms... (${retries + 1}/${MAX_RETRIES})`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+            return fetchWithProxy(endpoint, retries + 1, proxyIndex);
+        }
+        
+        console.error(`All proxy attempts failed after ${MAX_RETRIES} retries:`, error);
+        throw new Error(`Unable to fetch data: ${error.message}`);
     }
 }
 
@@ -214,13 +296,9 @@ async function getRandomObjectIds(count = 20) {
 const searchCache = new Map();
 const SEARCH_CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
-<<<<<<< HEAD
 // Cache for object details
 const objectDetailsCache = new Map();
 const OBJECT_CACHE_DURATION = 30 * 60 * 1000; // 30 minutes
-
-=======
->>>>>>> e11e5c042be9f74d6269222c66544f41a7623c22
 
 // Get a list of object IDs that match the filters
 async function searchObjects(filters = {}) {
@@ -285,7 +363,6 @@ async function searchObjects(filters = {}) {
 
 // Search artworks by text query
 async function searchArtworks(filters = {}) {
-<<<<<<< HEAD
     const { 
         searchQuery, 
         departmentId, 
@@ -302,12 +379,6 @@ async function searchArtworks(filters = {}) {
     
     // Use title search if provided, otherwise use general search query
     const query = title || searchQuery || '*';
-=======
-    const { searchQuery, departmentId, dateBegin, dateEnd, medium } = filters;
-    
-    // Default to wildcard search if no query provided
-    const query = searchQuery || '*';
->>>>>>> e11e5c042be9f74d6269222c66544f41a7623c22
     
     // Create a cache key based on all filters
     const cacheKey = JSON.stringify(filters);
@@ -321,14 +392,10 @@ async function searchArtworks(filters = {}) {
     
     try {
         // Build the search query with default to prevent 502
-<<<<<<< HEAD
         let queryParams = `q=${encodeURIComponent(query)}`;
         
         // Always add hasImages=true unless explicitly searching for all
         queryParams += '&hasImages=true';
-=======
-        let queryParams = `q=${encodeURIComponent(query)}&hasImages=true`;
->>>>>>> e11e5c042be9f74d6269222c66544f41a7623c22
         
         // Add additional filters
         if (departmentId) {
@@ -404,17 +471,49 @@ async function searchArtworks(filters = {}) {
 }
 
 
-// Get multiple object details in batches
-async function getObjectDetailsMultiple(objectIds, batchSize = 10) {
+// Get multiple object details in batches with smart rate limiting
+async function getObjectDetailsMultiple(objectIds, batchSize = 5) {
     const results = [];
+    const uniqueIds = [...new Set(objectIds)]; // Remove duplicates
     
-    for (let i = 0; i < objectIds.length; i += batchSize) {
-        const batch = objectIds.slice(i, i + batchSize);
+    // First, check cache and separate cached vs uncached
+    const cached = [];
+    const uncached = [];
+    
+    for (const id of uniqueIds) {
+        const cachedItem = objectDetailsCache.get(id);
+        if (cachedItem && Date.now() - cachedItem.timestamp < OBJECT_CACHE_DURATION) {
+            if (cachedItem.data) {
+                cached.push(cachedItem.data);
+            }
+        } else {
+            uncached.push(id);
+        }
+    }
+    
+    console.log(`Found ${cached.length} cached items, need to fetch ${uncached.length}`);
+    results.push(...cached);
+    
+    // Fetch uncached items in batches
+    for (let i = 0; i < uncached.length; i += batchSize) {
+        const batch = uncached.slice(i, i + batchSize);
+        
+        // Add a small delay between batches to avoid overwhelming the API
+        if (i > 0) {
+            await new Promise(resolve => setTimeout(resolve, 200));
+        }
+        
         const batchPromises = batch.map(id => getObjectDetails(id));
         
         try {
             const batchResults = await Promise.all(batchPromises);
             results.push(...batchResults.filter(result => result !== null));
+            
+            // Update loading progress if UI callback exists
+            if (window.MetUI && window.MetUI.updateLoadingProgress) {
+                const progress = ((i + batch.length) / uncached.length) * 100;
+                window.MetUI.updateLoadingProgress(progress);
+            }
         } catch (error) {
             console.error('Error fetching batch:', error);
         }
@@ -428,7 +527,6 @@ async function getObjectDetailsMultiple(objectIds, batchSize = 10) {
 function clearSearchCache() {
     searchCache.clear();
     console.log('Search cache cleared');
-<<<<<<< HEAD
 }
 
 // Clear object details cache
@@ -441,8 +539,6 @@ function clearObjectCache() {
 function clearAllCaches() {
     clearSearchCache();
     clearObjectCache();
-=======
->>>>>>> e11e5c042be9f74d6269222c66544f41a7623c22
 }
 
 // Get details for a specific object by ID
@@ -454,41 +550,44 @@ async function getObjectDetails(objectId) {
         return cached.data;
     }
     
-    try {
-        const data = await fetchWithProxy(`/objects/${objectId}`);
-        
-        // Validate that the artwork has an image
-        if (data && (data.primaryImage || data.primaryImageSmall)) {
-            // Cache the successful result
-            objectDetailsCache.set(objectId, {
-                data: data,
-                timestamp: Date.now()
-            });
+    // Use rate limiting queue for API calls
+    return queueRequest(async () => {
+        try {
+            const data = await fetchWithProxy(`/objects/${objectId}`);
             
-            // Limit cache size to prevent memory issues
-            if (objectDetailsCache.size > 1000) {
-                // Remove oldest entries
-                const entriesToRemove = objectDetailsCache.size - 800;
-                const keys = Array.from(objectDetailsCache.keys());
-                for (let i = 0; i < entriesToRemove; i++) {
-                    objectDetailsCache.delete(keys[i]);
+            // Validate that the artwork has an image
+            if (data && (data.primaryImage || data.primaryImageSmall)) {
+                // Cache the successful result
+                objectDetailsCache.set(objectId, {
+                    data: data,
+                    timestamp: Date.now()
+                });
+                
+                // Limit cache size to prevent memory issues
+                if (objectDetailsCache.size > 1000) {
+                    // Remove oldest entries
+                    const entriesToRemove = objectDetailsCache.size - 800;
+                    const keys = Array.from(objectDetailsCache.keys());
+                    for (let i = 0; i < entriesToRemove; i++) {
+                        objectDetailsCache.delete(keys[i]);
+                    }
                 }
+                
+                return data;
+            } else {
+                console.log(`Object ${objectId} has no image, skipping`);
+                // Cache null result to avoid repeated requests
+                objectDetailsCache.set(objectId, {
+                    data: null,
+                    timestamp: Date.now()
+                });
+                return null;
             }
-            
-            return data;
-        } else {
-            console.log(`Object ${objectId} has no image, skipping`);
-            // Cache null result to avoid repeated requests
-            objectDetailsCache.set(objectId, {
-                data: null,
-                timestamp: Date.now()
-            });
+        } catch (error) {
+            console.error(`Error fetching details for object ${objectId}:`, error);
             return null;
         }
-    } catch (error) {
-        console.error(`Error fetching details for object ${objectId}:`, error);
-        return null;
-    }
+    });
 }
 
 // Function to fetch a random artwork based on filters

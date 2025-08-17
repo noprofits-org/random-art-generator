@@ -31,15 +31,44 @@ async function displayArtwork(artwork) {
         img.className = 'artwork-image hidden';
         img.alt = artwork.title || 'Artwork from The Metropolitan Museum of Art';
         
-        // Handle image loading
+        // Use progressive image loading
+        const lowResImg = artwork.primaryImageSmall || artwork.primaryImage;
+        const highResImg = artwork.primaryImage;
+        
+        // Load low-res first if available
+        if (lowResImg !== highResImg && artwork.primaryImageSmall) {
+            const placeholder = new Image();
+            placeholder.src = window.MetAPI.loadArtworkImage(lowResImg);
+            placeholder.onload = () => {
+                img.style.filter = 'blur(5px)';
+                img.style.transition = 'filter 0.3s';
+                img.src = placeholder.src;
+                img.classList.remove('hidden');
+            };
+        }
+        
+        // Handle high-res image loading
         img.onload = function() {
-            // Remove loading indicator and show image when loaded
             loadingIndicator.remove();
             img.classList.remove('hidden');
+            // Remove blur when high-res loads
+            if (img.style.filter) {
+                setTimeout(() => {
+                    img.style.filter = '';
+                }, 100);
+            }
         };
         
         img.onerror = function() {
-            // Handle image loading error
+            // Try direct URL as fallback
+            if (img.dataset.fallbackTried !== 'true') {
+                console.log('Proxy failed, trying direct URL');
+                img.dataset.fallbackTried = 'true';
+                img.src = artwork.primaryImage;
+                return;
+            }
+            
+            // Both proxy and direct failed
             loadingIndicator.remove();
             imgContainer.innerHTML = `
                 <div class="artwork-placeholder">
@@ -60,17 +89,36 @@ async function displayArtwork(artwork) {
             console.error(`Failed to load image: ${artwork.primaryImage}`);
         };
         
-        // Create direct URL and proxy URL for failover
-        const directUrl = artwork.primaryImage;
-        const proxyUrl = window.MetAPI.loadArtworkImage(artwork.primaryImage);
+        // Set loading attribute for lazy loading
+        img.loading = 'lazy';
+        img.decoding = 'async';
         
-        // Try loading with proxy URL first
-        img.src = proxyUrl;
-        console.log(`Loading image via proxy: ${proxyUrl}`);
-        
-        // Add image to container
-        imgContainer.appendChild(img);
-        artworkContainer.appendChild(imgContainer);
+        // Add intersection observer for better performance
+        if ('IntersectionObserver' in window) {
+            const imageObserver = new IntersectionObserver((entries, observer) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        // Load high-res image when in viewport
+                        const proxyUrl = window.MetAPI.loadArtworkImage(highResImg);
+                        img.src = proxyUrl;
+                        console.log(`Loading image via proxy: ${proxyUrl}`);
+                        observer.unobserve(entry.target);
+                    }
+                });
+            }, {
+                rootMargin: '50px' // Start loading 50px before entering viewport
+            });
+            
+            imgContainer.appendChild(img);
+            artworkContainer.appendChild(imgContainer);
+            imageObserver.observe(img);
+        } else {
+            // Fallback for browsers without IntersectionObserver
+            const proxyUrl = window.MetAPI.loadArtworkImage(highResImg);
+            img.src = proxyUrl;
+            imgContainer.appendChild(img);
+            artworkContainer.appendChild(imgContainer);
+        }
     } else {
         // Display placeholder if no image available
         const placeholder = document.createElement('div');

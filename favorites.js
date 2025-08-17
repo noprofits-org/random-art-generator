@@ -8,18 +8,45 @@ const THUMBNAIL_MAX_SIZE = 300; // Max width/height for thumbnails
 
 let db = null;
 
-// Initialize IndexedDB
+// Initialize IndexedDB with better error handling
 async function initFavoritesDB() {
+    // Return existing db if already initialized
+    if (db && db.objectStoreNames.contains(FAVORITES_STORE_NAME)) {
+        return db;
+    }
+    
     return new Promise((resolve, reject) => {
+        // Check if IndexedDB is available
+        if (!window.indexedDB) {
+            const error = new Error('IndexedDB is not supported in this browser');
+            console.error(error.message);
+            reject(error);
+            return;
+        }
+        
         const request = indexedDB.open(FAVORITES_DB_NAME, FAVORITES_DB_VERSION);
         
         request.onerror = () => {
-            console.error('Failed to open favorites database');
-            reject(request.error);
+            const error = request.error || new Error('Failed to open favorites database');
+            console.error('IndexedDB error:', error);
+            reject(error);
         };
         
         request.onsuccess = (event) => {
             db = event.target.result;
+            
+            // Handle database errors
+            db.onerror = (event) => {
+                console.error('Database error:', event.target.error);
+            };
+            
+            // Handle version change
+            db.onversionchange = () => {
+                db.close();
+                db = null;
+                console.log('Database version changed, connection closed');
+            };
+            
             console.log('Favorites database opened successfully');
             resolve(db);
         };
@@ -36,49 +63,82 @@ async function initFavoritesDB() {
                 // Create indexes for searching
                 objectStore.createIndex('dateAdded', 'dateAdded', { unique: false });
                 objectStore.createIndex('department', 'department', { unique: false });
+                objectStore.createIndex('isHighlight', 'isHighlight', { unique: false });
                 
                 console.log('Favorites object store created');
             }
         };
+        
+        request.onblocked = () => {
+            console.warn('Database blocked by another connection');
+        };
     });
 }
 
-// Create thumbnail from image URL
+// Create thumbnail from image URL with timeout
 async function createThumbnail(imageUrl) {
     return new Promise((resolve) => {
         const img = new Image();
         img.crossOrigin = 'anonymous';
         
+        // Set timeout for image loading
+        const timeout = setTimeout(() => {
+            console.warn('Thumbnail creation timed out');
+            img.src = ''; // Cancel loading
+            resolve(null);
+        }, 5000); // 5 second timeout
+        
         img.onload = () => {
-            const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d');
+            clearTimeout(timeout);
             
-            // Calculate thumbnail dimensions
-            let width = img.width;
-            let height = img.height;
-            
-            if (width > height) {
-                if (width > THUMBNAIL_MAX_SIZE) {
-                    height = (height * THUMBNAIL_MAX_SIZE) / width;
-                    width = THUMBNAIL_MAX_SIZE;
+            try {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                
+                if (!ctx) {
+                    console.error('Canvas context not available');
+                    resolve(null);
+                    return;
                 }
-            } else {
-                if (height > THUMBNAIL_MAX_SIZE) {
-                    width = (width * THUMBNAIL_MAX_SIZE) / height;
-                    height = THUMBNAIL_MAX_SIZE;
+                
+                // Calculate thumbnail dimensions
+                let width = img.width;
+                let height = img.height;
+                
+                if (width > height) {
+                    if (width > THUMBNAIL_MAX_SIZE) {
+                        height = Math.floor((height * THUMBNAIL_MAX_SIZE) / width);
+                        width = THUMBNAIL_MAX_SIZE;
+                    }
+                } else {
+                    if (height > THUMBNAIL_MAX_SIZE) {
+                        width = Math.floor((width * THUMBNAIL_MAX_SIZE) / height);
+                        height = THUMBNAIL_MAX_SIZE;
+                    }
                 }
+                
+                canvas.width = width;
+                canvas.height = height;
+                
+                // Use better image rendering
+                ctx.imageSmoothingEnabled = true;
+                ctx.imageSmoothingQuality = 'high';
+                
+                // Draw and convert to data URL
+                ctx.drawImage(img, 0, 0, width, height);
+                
+                // Use webp if supported, fallback to jpeg
+                const dataUrl = canvas.toDataURL('image/webp', 0.85);
+                resolve(dataUrl.includes('data:image/webp') ? dataUrl : canvas.toDataURL('image/jpeg', 0.85));
+            } catch (error) {
+                console.error('Error creating thumbnail:', error);
+                resolve(null);
             }
-            
-            canvas.width = width;
-            canvas.height = height;
-            
-            // Draw and convert to data URL
-            ctx.drawImage(img, 0, 0, width, height);
-            resolve(canvas.toDataURL('image/jpeg', 0.8));
         };
         
         img.onerror = () => {
-            console.error('Failed to create thumbnail');
+            clearTimeout(timeout);
+            console.error('Failed to load image for thumbnail');
             resolve(null);
         };
         
@@ -86,11 +146,18 @@ async function createThumbnail(imageUrl) {
     });
 }
 
-// Add artwork to favorites
+// Add artwork to favorites with better error handling
 async function addToFavorites(artwork) {
-    if (!db) await initFavoritesDB();
-    
     try {
+        // Ensure database is initialized
+        if (!db) {
+            await initFavoritesDB();
+        }
+        
+        // Validate artwork object
+        if (!artwork || !artwork.objectID) {
+            throw new Error('Invalid artwork object');
+        }
         // Check if we've reached the limit
         const count = await getFavoritesCount();
         if (count >= MAX_FAVORITES) {
@@ -136,11 +203,22 @@ async function addToFavorites(artwork) {
         
         const transaction = db.transaction([FAVORITES_STORE_NAME], 'readwrite');
         const objectStore = transaction.objectStore(FAVORITES_STORE_NAME);
+        
+        // Set up transaction error handling
+        transaction.onerror = () => {
+            console.error('Transaction error:', transaction.error);
+        };
+        
+        transaction.onabort = () => {
+            console.error('Transaction aborted');
+        };
+        
         const request = objectStore.put(favorite);
         
         return new Promise((resolve, reject) => {
-            request.onsuccess = () => {
+            transaction.oncomplete = () => {
                 console.log(`Added artwork ${artwork.objectID} to favorites`);
+                
                 // Notify service worker to cache the image
                 if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
                     navigator.serviceWorker.controller.postMessage({
@@ -149,16 +227,29 @@ async function addToFavorites(artwork) {
                         imageUrl: artwork.primaryImage
                     });
                 }
+                
+                // Update UI if callback exists
+                if (window.MetUI && window.MetUI.updateFavoriteButton) {
+                    window.MetUI.updateFavoriteButton(artwork.objectID, true);
+                }
+                
                 resolve(true);
             };
             
             request.onerror = () => {
-                console.error('Failed to add favorite');
-                reject(request.error);
+                const error = request.error || new Error('Failed to add favorite');
+                console.error('Failed to add favorite:', error);
+                reject(error);
             };
         });
     } catch (error) {
         console.error('Error adding to favorites:', error);
+        
+        // Show user-friendly error message
+        if (window.MetUI && window.MetUI.showError) {
+            window.MetUI.showError('Unable to save favorite. Please try again.');
+        }
+        
         throw error;
     }
 }
@@ -335,15 +426,45 @@ async function toggleFavorite(artwork) {
     }
 }
 
-// Initialize favorites on load
-document.addEventListener('DOMContentLoaded', async () => {
-    try {
-        await initFavoritesDB();
-        console.log('Favorites system initialized');
-    } catch (error) {
-        console.error('Failed to initialize favorites:', error);
+// Initialize favorites with better lifecycle management
+let initPromise = null;
+
+async function ensureFavoritesInitialized() {
+    if (!initPromise) {
+        initPromise = initFavoritesDB().catch(error => {
+            console.error('Failed to initialize favorites:', error);
+            initPromise = null; // Allow retry
+            throw error;
+        });
     }
-});
+    return initPromise;
+}
+
+// Initialize on multiple events to ensure it runs
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', ensureFavoritesInitialized);
+} else {
+    // DOM already loaded
+    ensureFavoritesInitialized();
+}
+
+// Also try to initialize when first used
+const originalFunctions = {
+    addToFavorites,
+    removeFromFavorites,
+    isFavorited,
+    getAllFavorites,
+    getFavorite,
+    toggleFavorite
+};
+
+// Wrap each function to ensure initialization
+for (const [name, fn] of Object.entries(originalFunctions)) {
+    window[name] = async function(...args) {
+        await ensureFavoritesInitialized();
+        return fn.apply(this, args);
+    };
+}
 
 // Make functions available globally
 window.MetFavorites = {

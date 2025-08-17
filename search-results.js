@@ -175,10 +175,55 @@ function createSearchResultItem(artwork) {
     if (artwork.primaryImageSmall) {
         const img = document.createElement('img');
         img.className = 'search-result-image';
-        img.src = window.MetAPI.loadArtworkImage(artwork.primaryImageSmall);
         img.alt = artwork.title || 'Artwork';
         img.loading = 'lazy';
-        imageDiv.appendChild(img);
+        img.decoding = 'async';
+        
+        // Add placeholder while loading
+        const placeholder = document.createElement('div');
+        placeholder.className = 'search-result-image-placeholder';
+        placeholder.innerHTML = '<div class="loading-spinner-small"></div>';
+        imageDiv.appendChild(placeholder);
+        
+        // Setup progressive loading
+        const loadImage = () => {
+            const imgUrl = window.MetAPI.loadArtworkImage(artwork.primaryImageSmall);
+            
+            // Preload image
+            const tempImg = new Image();
+            tempImg.onload = () => {
+                img.src = imgUrl;
+                img.onload = () => {
+                    placeholder.remove();
+                    img.classList.add('loaded');
+                };
+                imageDiv.appendChild(img);
+            };
+            tempImg.onerror = () => {
+                placeholder.innerHTML = '<i class="fas fa-image"></i>';
+                placeholder.classList.add('error');
+            };
+            tempImg.src = imgUrl;
+        };
+        
+        // Use IntersectionObserver for true lazy loading
+        if ('IntersectionObserver' in window) {
+            const imageObserver = new IntersectionObserver((entries, observer) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        loadImage();
+                        observer.unobserve(entry.target);
+                    }
+                });
+            }, {
+                rootMargin: '100px' // Start loading 100px before entering viewport
+            });
+            
+            imageObserver.observe(imageDiv);
+        } else {
+            // Fallback for browsers without IntersectionObserver
+            loadImage();
+        }
     } else {
         imageDiv.innerHTML = '<div class="search-result-placeholder"><i class="fas fa-image"></i></div>';
     }

@@ -80,11 +80,47 @@ function validateDateRange(beginInput, endInput) {
 
 // Set up text search functionality with debouncing
 function setupTextSearch() {
-    const searchInput = document.getElementById('searchInput');
-    const clearSearchButton = document.getElementById('clearSearchButton');
+    setupSearchTabs();
+    setupSearchInput('searchInput', 'clearSearchButton', 'quick');
+    setupSearchInput('artistSearchInput', 'clearArtistSearchButton', 'artist');
+    setupSearchInput('titleSearchInput', 'clearTitleSearchButton', 'title');
+    setupSearchInput('advancedSearchInput', 'clearAdvancedSearchButton', 'advanced');
+    setupArtistSuggestions();
+}
+
+// Set up search tabs
+function setupSearchTabs() {
+    const tabs = document.querySelectorAll('.search-tab');
+    const contents = document.querySelectorAll('.search-tab-content');
+    
+    tabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+            const targetTab = tab.dataset.tab;
+            
+            // Update active states
+            tabs.forEach(t => t.classList.remove('active'));
+            contents.forEach(c => c.classList.remove('active'));
+            
+            tab.classList.add('active');
+            document.getElementById(`${targetTab}SearchTab`).classList.add('active');
+            
+            // Focus the appropriate input
+            const inputId = targetTab === 'quick' ? 'searchInput' : `${targetTab}SearchInput`;
+            const input = document.getElementById(inputId);
+            if (input) {
+                input.focus();
+            }
+        });
+    });
+}
+
+// Set up individual search input
+function setupSearchInput(inputId, clearButtonId, searchType) {
+    const searchInput = document.getElementById(inputId);
+    const clearSearchButton = document.getElementById(clearButtonId);
     
     if (!searchInput) {
-        console.error('Search input element not found');
+        console.error(`Search input element ${inputId} not found`);
         return;
     }
     
@@ -105,10 +141,10 @@ function setupTextSearch() {
         // Set new timer for 500ms
         searchDebounceTimer = setTimeout(() => {
             if (value) {
-                console.log('Search query:', value);
+                console.log(`${searchType} search query:`, value);
                 // Trigger search through UI
                 if (window.UI && window.UI.triggerSearch) {
-                    window.UI.triggerSearch(value);
+                    window.UI.triggerSearch(value, searchType);
                 }
             }
         }, 500);
@@ -127,6 +163,80 @@ function setupTextSearch() {
     }
 }
 
+// Set up artist suggestions
+function setupArtistSuggestions() {
+    const artistInput = document.getElementById('artistSearchInput');
+    const suggestionsDiv = document.getElementById('artistSuggestions');
+    
+    if (!artistInput || !suggestionsDiv) return;
+    
+    let suggestionTimer = null;
+    
+    artistInput.addEventListener('input', (e) => {
+        const value = e.target.value.trim();
+        
+        if (suggestionTimer) {
+            clearTimeout(suggestionTimer);
+        }
+        
+        if (value.length < 2) {
+            suggestionsDiv.style.display = 'none';
+            return;
+        }
+        
+        suggestionTimer = setTimeout(() => {
+            if (window.MetAPI && window.MetAPI.getArtistSuggestions) {
+                window.MetAPI.getArtistSuggestions(value).then(suggestions => {
+                    displayArtistSuggestions(suggestions, suggestionsDiv, artistInput);
+                });
+            }
+        }, 300);
+    });
+    
+    // Hide suggestions when clicking outside
+    document.addEventListener('click', (e) => {
+        if (!artistInput.contains(e.target) && !suggestionsDiv.contains(e.target)) {
+            suggestionsDiv.style.display = 'none';
+        }
+    });
+}
+
+// Display artist suggestions
+function displayArtistSuggestions(suggestions, suggestionsDiv, input) {
+    if (!suggestions || suggestions.length === 0) {
+        suggestionsDiv.style.display = 'none';
+        return;
+    }
+    
+    suggestionsDiv.innerHTML = suggestions.map(artist => `
+        <div class="artist-suggestion" data-artist="${artist.name}">
+            <div class="artist-name">${artist.name}</div>
+            ${artist.nationality || artist.dates ? `
+                <div class="artist-info">
+                    ${artist.nationality || ''} ${artist.dates || ''}
+                </div>
+            ` : ''}
+        </div>
+    `).join('');
+    
+    suggestionsDiv.style.display = 'block';
+    
+    // Add click handlers
+    const suggestionItems = suggestionsDiv.querySelectorAll('.artist-suggestion');
+    suggestionItems.forEach(item => {
+        item.addEventListener('click', () => {
+            const artistName = item.dataset.artist;
+            input.value = artistName;
+            suggestionsDiv.style.display = 'none';
+            
+            // Trigger search
+            if (window.UI && window.UI.triggerSearch) {
+                window.UI.triggerSearch(artistName, 'artist');
+            }
+        });
+    });
+}
+
 // Get the current filters from the UI
 function getCurrentFilters() {
     const departmentId = document.getElementById('departmentSelect')?.value || '';
@@ -134,6 +244,17 @@ function getCurrentFilters() {
     const dateEnd = document.getElementById('dateEnd')?.value || '';
     const medium = document.getElementById('mediumSelect')?.value || '';
     const searchQuery = document.getElementById('searchInput')?.value.trim() || '';
+    
+    // Get object type filters
+    const includeTypes = [];
+    document.querySelectorAll('input[name="includeType"]:checked').forEach(checkbox => {
+        includeTypes.push(checkbox.value);
+    });
+    
+    const excludeTypes = [];
+    document.querySelectorAll('input[name="excludeType"]:checked').forEach(checkbox => {
+        excludeTypes.push(checkbox.value);
+    });
     
     // Build the filters object
     const filters = {};
@@ -143,6 +264,8 @@ function getCurrentFilters() {
     if (dateEnd) filters.dateEnd = dateEnd;
     if (medium) filters.medium = medium;
     if (searchQuery) filters.searchQuery = searchQuery;
+    if (includeTypes.length > 0) filters.includeTypes = includeTypes;
+    if (excludeTypes.length > 0) filters.excludeTypes = excludeTypes;
     
     return filters;
 }

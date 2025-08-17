@@ -168,6 +168,10 @@ async function getRandomObjectIds(count = 20) {
 const searchCache = new Map();
 const SEARCH_CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
+// Cache for validated object IDs (ones we know have images)
+const validatedIDsCache = new Map();
+const VALIDATION_CACHE_DURATION = 30 * 60 * 1000; // 30 minutes
+
 // Get a list of object IDs that match the filters
 async function searchObjects(filters = {}) {
     // If the search endpoint has been failing, use the alternative approach
@@ -185,10 +189,16 @@ async function searchObjects(filters = {}) {
             
             if (data && data.objectIDs && data.objectIDs.length > 0) {
                 console.log(`Found ${data.objectIDs.length} objects in department ${filters.departmentId}`);
-                // Limit to 100 for better performance
-                const limitedIDs = data.objectIDs.length > 100 ? 
-                    data.objectIDs.slice(0, 100) : data.objectIDs;
-                return limitedIDs;
+                // Limit to 200 for validation
+                const limitedIDs = data.objectIDs.length > 200 ? 
+                    data.objectIDs.slice(0, 200) : data.objectIDs;
+                
+                // Validate that the objects have images
+                console.log('Validating department objects for images...');
+                const validatedIDs = await validateObjectIDs(limitedIDs, 50);
+                console.log(`Validated ${validatedIDs.length} objects with images`);
+                
+                return validatedIDs.length > 0 ? validatedIDs : limitedIDs.slice(0, 20); // Fallback
             }
         }
         
@@ -218,9 +228,17 @@ async function searchObjects(filters = {}) {
         
         console.log(`Found ${data.total || 0} objects matching filters`);
         
-        // If we have too many results, limit to 100 for better performance
+        // If we have too many results, limit to 200 for validation
         const objectIDs = data.objectIDs || [];
-        const limitedIDs = objectIDs.length > 100 ? objectIDs.slice(0, 100) : objectIDs;
+        const limitedIDs = objectIDs.length > 200 ? objectIDs.slice(0, 200) : objectIDs;
+        
+        // Validate that the objects have images
+        if (limitedIDs.length > 0) {
+            console.log('Validating object IDs for images...');
+            const validatedIDs = await validateObjectIDs(limitedIDs, 50);
+            console.log(`Validated ${validatedIDs.length} objects with images`);
+            return validatedIDs.length > 0 ? validatedIDs : limitedIDs.slice(0, 20); // Fallback to first 20
+        }
         
         return limitedIDs;
     } catch (error) {
@@ -233,7 +251,7 @@ async function searchObjects(filters = {}) {
 
 // Search artworks by text query
 async function searchArtworks(filters = {}) {
-    const { searchQuery, departmentId, dateBegin, dateEnd, medium } = filters;
+    const { searchQuery, departmentId, dateBegin, dateEnd, medium, includeTypes, excludeTypes } = filters;
     
     if (!searchQuery) {
         console.warn('searchArtworks called without a search query');
@@ -279,16 +297,236 @@ async function searchArtworks(filters = {}) {
         
         console.log(`Found ${data.total || data.objectIDs.length} artworks matching search`);
         
-        // Cache the results
+        // If we have object type filters, we need to validate and filter
+        let filteredIDs = data.objectIDs;
+        if ((includeTypes && includeTypes.length > 0) || (excludeTypes && excludeTypes.length > 0)) {
+            console.log('Applying object type filters...');
+            filteredIDs = await filterByObjectType(data.objectIDs, includeTypes, excludeTypes);
+            console.log(`Filtered to ${filteredIDs.length} objects after type filtering`);
+        }
+        
+        // Validate results for images if we have a reasonable number
+        let validatedIDs = filteredIDs;
+        if (filteredIDs.length <= 200) {
+            console.log('Validating search results for images...');
+            validatedIDs = await validateObjectIDs(filteredIDs, Math.min(50, filteredIDs.length));
+            console.log(`Validated ${validatedIDs.length} search results with images`);
+        } else {
+            // For large result sets, just validate a sample
+            const sampleSize = 100;
+            const sample = filteredIDs.slice(0, sampleSize);
+            validatedIDs = await validateObjectIDs(sample, 50);
+        }
+        
+        // Cache the validated results
         searchCache.set(cacheKey, {
-            objectIDs: data.objectIDs,
+            objectIDs: validatedIDs,
             timestamp: Date.now(),
-            total: data.total
+            total: validatedIDs.length
         });
         
-        return data.objectIDs;
+        return validatedIDs;
     } catch (error) {
         console.error('Error searching artworks:', error);
+        return [];
+    }
+}
+
+// Search artworks by artist name
+async function searchByArtist(artistName, filters = {}) {
+    if (!artistName) {
+        console.warn('searchByArtist called without artist name');
+        return [];
+    }
+    
+    // Create a search query specifically for artist
+    const searchFilters = {
+        ...filters,
+        searchQuery: artistName,
+        searchType: 'artist'
+    };
+    
+    try {
+        // Use the regular search but we'll filter results by artist match
+        const objectIds = await searchArtworks(searchFilters);
+        
+        if (!objectIds || objectIds.length === 0) {
+            return [];
+        }
+        
+        // Fetch details and filter by exact artist match
+        const details = await getObjectDetailsMultiple(objectIds.slice(0, 100));
+        const artistLower = artistName.toLowerCase();
+        
+        // Filter and score by artist relevance
+        const artistMatches = details.filter(artwork => {
+            if (!artwork || !artwork.artistDisplayName) return false;
+            const artworkArtist = artwork.artistDisplayName.toLowerCase();
+            return artworkArtist.includes(artistLower);
+        }).map(artwork => {
+            const artworkArtist = artwork.artistDisplayName.toLowerCase();
+            let score = 0;
+            
+            if (artworkArtist === artistLower) {
+                score = 100; // Exact match
+            } else if (artworkArtist.startsWith(artistLower)) {
+                score = 80; // Starts with
+            } else if (artworkArtist.includes(artistLower)) {
+                score = 50; // Contains
+            }
+            
+            return {
+                ...artwork,
+                searchContext: {
+                    type: 'artist',
+                    matchField: 'artistDisplayName',
+                    score
+                }
+            };
+        });
+        
+        // Sort by relevance
+        artistMatches.sort((a, b) => b.searchContext.score - a.searchContext.score);
+        
+        return artistMatches.map(a => a.objectID);
+    } catch (error) {
+        console.error('Error searching by artist:', error);
+        return [];
+    }
+}
+
+// Search artworks by title
+async function searchByTitle(title, filters = {}) {
+    if (!title) {
+        console.warn('searchByTitle called without title');
+        return [];
+    }
+    
+    // Create a search query specifically for title
+    const searchFilters = {
+        ...filters,
+        searchQuery: title,
+        searchType: 'title'
+    };
+    
+    try {
+        // Use the regular search but we'll filter results by title match
+        const objectIds = await searchArtworks(searchFilters);
+        
+        if (!objectIds || objectIds.length === 0) {
+            return [];
+        }
+        
+        // Fetch details and filter by title match
+        const details = await getObjectDetailsMultiple(objectIds.slice(0, 100));
+        const titleLower = title.toLowerCase();
+        
+        // Filter and score by title relevance
+        const titleMatches = details.filter(artwork => {
+            if (!artwork || !artwork.title) return false;
+            const artworkTitle = artwork.title.toLowerCase();
+            return artworkTitle.includes(titleLower);
+        }).map(artwork => {
+            const artworkTitle = artwork.title.toLowerCase();
+            let score = 0;
+            
+            if (artworkTitle === titleLower) {
+                score = 100; // Exact match
+            } else if (artworkTitle.startsWith(titleLower)) {
+                score = 80; // Starts with
+            } else if (artworkTitle.includes(titleLower)) {
+                score = 50; // Contains
+            }
+            
+            return {
+                ...artwork,
+                searchContext: {
+                    type: 'title',
+                    matchField: 'title',
+                    score
+                }
+            };
+        });
+        
+        // Sort by relevance
+        titleMatches.sort((a, b) => b.searchContext.score - a.searchContext.score);
+        
+        return titleMatches.map(a => a.objectID);
+    } catch (error) {
+        console.error('Error searching by title:', error);
+        return [];
+    }
+}
+
+// Cache for artist suggestions
+const artistSuggestionsCache = new Map();
+const ARTIST_CACHE_DURATION = 60 * 60 * 1000; // 1 hour
+
+// Get artist suggestions based on partial name
+async function getArtistSuggestions(partialName) {
+    if (!partialName || partialName.length < 2) return [];
+    
+    const cacheKey = partialName.toLowerCase();
+    const cached = artistSuggestionsCache.get(cacheKey);
+    
+    if (cached && Date.now() - cached.timestamp < ARTIST_CACHE_DURATION) {
+        return cached.suggestions;
+    }
+    
+    try {
+        // Search for artworks with this partial artist name
+        const searchResults = await searchArtworks({ searchQuery: partialName });
+        if (!searchResults || searchResults.length === 0) return [];
+        
+        // Get details for a sample of results
+        const sampleSize = Math.min(30, searchResults.length);
+        const details = await getObjectDetailsMultiple(searchResults.slice(0, sampleSize));
+        
+        // Extract unique artists
+        const artistMap = new Map();
+        const partialLower = partialName.toLowerCase();
+        
+        details.forEach(artwork => {
+            if (artwork && artwork.artistDisplayName) {
+                const artistName = artwork.artistDisplayName;
+                const artistLower = artistName.toLowerCase();
+                
+                if (artistLower.includes(partialLower) && !artistMap.has(artistLower)) {
+                    artistMap.set(artistLower, {
+                        name: artistName,
+                        nationality: artwork.artistNationality || '',
+                        dates: artwork.artistDisplayBio || '',
+                        count: 1
+                    });
+                } else if (artistMap.has(artistLower)) {
+                    artistMap.get(artistLower).count++;
+                }
+            }
+        });
+        
+        // Convert to array and sort by relevance
+        const suggestions = Array.from(artistMap.values())
+            .sort((a, b) => {
+                // Prioritize exact matches
+                const aExact = a.name.toLowerCase() === partialLower;
+                const bExact = b.name.toLowerCase() === partialLower;
+                if (aExact && !bExact) return -1;
+                if (!aExact && bExact) return 1;
+                
+                // Then by count
+                return b.count - a.count;
+            })
+            .slice(0, 10); // Limit to 10 suggestions
+        
+        // Cache the results
+        artistSuggestionsCache.set(cacheKey, {
+            suggestions,
+            timestamp: Date.now()
+        });
+        
+        return suggestions;
+    } catch (error) {
+        console.error('Error getting artist suggestions:', error);
         return [];
     }
 }
@@ -312,17 +550,155 @@ async function getObjectDetailsMultiple(objectIds, batchSize = 10) {
     return results;
 }
 
+// Filter objects by type (include/exclude)
+async function filterByObjectType(objectIds, includeTypes = [], excludeTypes = []) {
+    if (objectIds.length === 0) return [];
+    
+    const filteredIDs = [];
+    const batchSize = 10;
+    const maxToCheck = Math.min(200, objectIds.length); // Limit to prevent too many API calls
+    
+    for (let i = 0; i < maxToCheck; i += batchSize) {
+        const batch = objectIds.slice(i, Math.min(i + batchSize, maxToCheck));
+        const batchPromises = batch.map(id => 
+            fetchWithProxy(`/objects/${id}`)
+                .then(data => {
+                    if (!data) return null;
+                    
+                    // Check if object has an image first
+                    if (!data.primaryImage && !data.primaryImageSmall) return null;
+                    
+                    const objectName = (data.objectName || '').toLowerCase();
+                    const title = (data.title || '').toLowerCase();
+                    const classification = (data.classification || '').toLowerCase();
+                    const objectType = objectName || classification;
+                    
+                    // Check exclude filters first
+                    if (excludeTypes.length > 0) {
+                        for (const excludeType of excludeTypes) {
+                            const exclude = excludeType.toLowerCase();
+                            if (objectType.includes(exclude) || title.includes(exclude)) {
+                                console.log(`Excluding ${id}: ${objectName} (matches ${exclude})`);
+                                return null;
+                            }
+                        }
+                    }
+                    
+                    // Check include filters if specified
+                    if (includeTypes.length > 0) {
+                        let included = false;
+                        for (const includeType of includeTypes) {
+                            const include = includeType.toLowerCase();
+                            if (objectType.includes(include) || classification.includes(include)) {
+                                included = true;
+                                break;
+                            }
+                        }
+                        if (!included) {
+                            console.log(`Not including ${id}: ${objectName} (doesn't match include filters)`);
+                            return null;
+                        }
+                    }
+                    
+                    return { id, data };
+                })
+                .catch(() => null)
+        );
+        
+        try {
+            const results = await Promise.all(batchPromises);
+            results.forEach(result => {
+                if (result && result.id) {
+                    filteredIDs.push(result.id);
+                }
+            });
+            
+            console.log(`Processed ${i + batch.length} objects, ${filteredIDs.length} passed filters`);
+            
+            // Stop early if we have enough results
+            if (filteredIDs.length >= 50) break;
+        } catch (error) {
+            console.error('Error filtering batch:', error);
+        }
+    }
+    
+    return filteredIDs;
+}
+
+// Validate object IDs by checking if they have images
+async function validateObjectIDs(objectIds, maxToValidate = 50) {
+    const validatedIDs = [];
+    const cacheKey = objectIds.slice(0, 10).join(','); // Use first 10 IDs as cache key
+    
+    // Check cache first
+    const cached = validatedIDsCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < VALIDATION_CACHE_DURATION) {
+        console.log('Returning cached validated IDs');
+        return cached.validIDs;
+    }
+    
+    console.log(`Validating up to ${maxToValidate} object IDs for images...`);
+    
+    // Process in batches for efficiency
+    const batchSize = 10;
+    let processed = 0;
+    
+    for (let i = 0; i < objectIds.length && validatedIDs.length < maxToValidate; i += batchSize) {
+        if (processed >= maxToValidate * 2) break; // Stop if we've checked too many
+        
+        const batch = objectIds.slice(i, Math.min(i + batchSize, objectIds.length));
+        const batchPromises = batch.map(id => 
+            fetchWithProxy(`/objects/${id}`)
+                .then(data => ({ id, hasImage: !!(data && (data.primaryImage || data.primaryImageSmall)) }))
+                .catch(() => ({ id, hasImage: false }))
+        );
+        
+        try {
+            const results = await Promise.all(batchPromises);
+            results.forEach(result => {
+                if (result.hasImage) {
+                    validatedIDs.push(result.id);
+                }
+            });
+            processed += batch.length;
+            
+            console.log(`Validated ${processed} IDs, found ${validatedIDs.length} with images`);
+        } catch (error) {
+            console.error('Error validating batch:', error);
+        }
+        
+        // Early exit if we have enough
+        if (validatedIDs.length >= maxToValidate) break;
+    }
+    
+    // Cache the results
+    validatedIDsCache.set(cacheKey, {
+        validIDs: validatedIDs,
+        timestamp: Date.now()
+    });
+    
+    return validatedIDs;
+}
+
 // Clear search cache
 function clearSearchCache() {
     searchCache.clear();
-    console.log('Search cache cleared');
+    validatedIDsCache.clear();
+    console.log('Search and validation caches cleared');
 }
 
 // Get details for a specific object by ID
 async function getObjectDetails(objectId) {
     try {
         const data = await fetchWithProxy(`/objects/${objectId}`);
-        return data;
+        
+        // Validate that the artwork has an image
+        if (data && (data.primaryImage || data.primaryImageSmall)) {
+            return data;
+        } else {
+            console.log(`Object ${objectId} has no image, skipping`);
+            return null;
+        }
     } catch (error) {
         console.error(`Error fetching details for object ${objectId}:`, error);
         return null;
@@ -346,20 +722,41 @@ async function getRandomArtwork(filters = {}) {
             return null;
         }
         
-        // Select a random object ID from the results
-        const randomIndex = Math.floor(Math.random() * objectIDs.length);
-        const randomObjectId = objectIDs[randomIndex];
+        // Try to find an artwork with an image
+        let objectDetails = null;
+        let attempts = 0;
+        const maxAttempts = Math.min(10, objectIDs.length);
+        const triedIndices = new Set();
         
-        console.log(`Selected random object ID ${randomObjectId} from ${objectIDs.length} options`);
-        
-        // Update loading message
-        window.MetUI.updateLoadingMessage('Fetching artwork details...');
-        
-        // Get the details for the random object
-        const objectDetails = await getObjectDetails(randomObjectId);
+        while (!objectDetails && attempts < maxAttempts && triedIndices.size < objectIDs.length) {
+            // Select a random object ID that we haven't tried yet
+            let randomIndex;
+            do {
+                randomIndex = Math.floor(Math.random() * objectIDs.length);
+            } while (triedIndices.has(randomIndex) && triedIndices.size < objectIDs.length);
+            
+            triedIndices.add(randomIndex);
+            const randomObjectId = objectIDs[randomIndex];
+            
+            console.log(`Attempt ${attempts + 1}: Trying object ID ${randomObjectId}`);
+            
+            // Update loading message
+            window.MetUI.updateLoadingMessage('Searching for artwork with image...');
+            
+            // Get the details for the random object
+            objectDetails = await getObjectDetails(randomObjectId);
+            
+            attempts++;
+        }
         
         // Hide loading state
         window.MetUI.hideLoading();
+        
+        if (!objectDetails) {
+            console.warn('Could not find any artwork with images after', attempts, 'attempts');
+            window.MetUI.showError('No artworks with images found. Try different filters.');
+            return null;
+        }
         
         return objectDetails;
     } catch (error) {
@@ -379,7 +776,7 @@ async function getRandomArtworkWithFallback(filters = {}) {
         
         // If no results, try with only hasImages=true
         window.MetUI.showLoading();
-        window.MetUI.updateLoadingMessage('No results with filters. Trying with minimal filters...');
+        window.MetUI.updateLoadingMessage('No artworks with images found. Trying with minimal filters...');
         
         const minimalResult = await getRandomArtwork({}); // Minimal query
         if (minimalResult) return minimalResult;
@@ -391,7 +788,7 @@ async function getRandomArtworkWithFallback(filters = {}) {
             delete simpleFilters.medium;
             
             window.MetUI.showLoading();
-            window.MetUI.updateLoadingMessage('Trying without department and medium filters...');
+            window.MetUI.updateLoadingMessage('Searching more broadly for artworks with images...');
             
             return await getRandomArtwork(simpleFilters);
         }
@@ -400,7 +797,7 @@ async function getRandomArtworkWithFallback(filters = {}) {
     } catch (error) {
         console.error('Error in artwork fallback:', error);
         window.MetUI.hideLoading();
-        window.MetUI.showError('Unable to find any artwork. Please try again later.');
+        window.MetUI.showError('Unable to find artworks with images. Please try different filters.');
         return null;
     }
 }
@@ -497,6 +894,9 @@ window.MetAPI = {
     getDepartments,
     searchObjects,
     searchArtworks,
+    searchByArtist,
+    searchByTitle,
+    getArtistSuggestions,
     getObjectDetails,
     getObjectDetailsMultiple,
     getRandomArtwork: getRandomArtworkEnhanced,

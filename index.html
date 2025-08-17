@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
     <title>Met Art Generator</title>
     
     <!-- PWA Meta Tags -->
@@ -50,25 +50,96 @@
 
 <body>
     <div class="app-container">
+        <!-- Mobile Menu Button -->
+        <button class="mobile-menu-button" id="mobileMenuButton">
+            <i class="fas fa-bars"></i>
+            <span>Filters & Search</span>
+        </button>
+        
+        <!-- Mobile Overlay -->
+        <div class="mobile-overlay" id="mobileOverlay"></div>
+        
         <!-- Side Drawer for Controls -->
         <div class="controls-drawer" id="controlsDrawer">
             <div class="drawer-header">
                 <h2>Random Art Generator</h2>
-                <button class="toggle-drawer" id="toggleDrawer">
+                <button class="toggle-drawer desktop-only" id="toggleDrawer">
                     <i class="fas fa-chevron-left"></i>
                 </button>
+                <button class="close-drawer mobile-only" id="closeDrawer">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            
+            <!-- Mobile drawer handle -->
+            <div class="mobile-drawer-handle mobile-only">
+                <span></span>
             </div>
             <div class="drawer-content">
                 <div class="control-group">
                     <h3>Search</h3>
-                    <div class="search-container">
-                        <div class="search-input-wrapper">
-                            <input type="text" id="searchInput" placeholder="Search by artist, title, or description..." class="search-input">
-                            <button id="clearSearchButton" class="clear-search-button" style="display: none;">
-                                <i class="fas fa-times"></i>
-                            </button>
+                    
+                    <!-- Search Tabs -->
+                    <div class="search-tabs">
+                        <button class="search-tab active" data-tab="quick">Quick Search</button>
+                        <button class="search-tab" data-tab="artist">Artist</button>
+                        <button class="search-tab" data-tab="title">Title</button>
+                        <button class="search-tab" data-tab="advanced">Advanced</button>
+                    </div>
+                    
+                    <!-- Quick Search Tab -->
+                    <div class="search-tab-content active" id="quickSearchTab">
+                        <div class="search-container">
+                            <div class="search-input-wrapper">
+                                <input type="text" id="searchInput" placeholder="Search everything..." class="search-input">
+                                <button id="clearSearchButton" class="clear-search-button" style="display: none;">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </div>
+                            <div class="search-hint">Search across all fields: artist, title, medium, etc.</div>
                         </div>
-                        <div class="search-hint">Search artworks by artist name, title, or keywords</div>
+                    </div>
+                    
+                    <!-- Artist Search Tab -->
+                    <div class="search-tab-content" id="artistSearchTab">
+                        <div class="search-container">
+                            <div class="search-input-wrapper">
+                                <input type="text" id="artistSearchInput" placeholder="Search by artist name..." class="search-input" autocomplete="off">
+                                <button id="clearArtistSearchButton" class="clear-search-button" style="display: none;">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </div>
+                            <div class="artist-suggestions" id="artistSuggestions" style="display: none;">
+                                <!-- Artist suggestions will appear here -->
+                            </div>
+                            <div class="search-hint">Search for specific artists (e.g., "Monet", "Van Gogh")</div>
+                        </div>
+                    </div>
+                    
+                    <!-- Title Search Tab -->
+                    <div class="search-tab-content" id="titleSearchTab">
+                        <div class="search-container">
+                            <div class="search-input-wrapper">
+                                <input type="text" id="titleSearchInput" placeholder="Search by artwork title..." class="search-input">
+                                <button id="clearTitleSearchButton" class="clear-search-button" style="display: none;">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </div>
+                            <div class="search-hint">Search for specific artwork titles</div>
+                        </div>
+                    </div>
+                    
+                    <!-- Advanced Search Tab -->
+                    <div class="search-tab-content" id="advancedSearchTab">
+                        <div class="search-container">
+                            <div class="search-input-wrapper">
+                                <input type="text" id="advancedSearchInput" placeholder="Keywords..." class="search-input">
+                                <button id="clearAdvancedSearchButton" class="clear-search-button" style="display: none;">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </div>
+                            <div class="search-hint">Combine with filters below for precise results</div>
+                        </div>
                     </div>
                     
                     <!-- Search History -->
@@ -116,6 +187,58 @@
                             <option value="Textiles">Textiles</option>
                         </select>
                     </div>
+                    
+                    <div class="filter">
+                        <label>Object Type Filters</label>
+                        <div class="object-type-filters">
+                            <div class="filter-section">
+                                <div class="filter-section-title">Include Only:</div>
+                                <label class="checkbox-label">
+                                    <input type="checkbox" name="includeType" value="Painting" id="includePaintings">
+                                    <span>Paintings</span>
+                                </label>
+                                <label class="checkbox-label">
+                                    <input type="checkbox" name="includeType" value="Sculpture" id="includeSculpture">
+                                    <span>Sculptures</span>
+                                </label>
+                                <label class="checkbox-label">
+                                    <input type="checkbox" name="includeType" value="Photograph" id="includePhotographs">
+                                    <span>Photographs</span>
+                                </label>
+                                <label class="checkbox-label">
+                                    <input type="checkbox" name="includeType" value="Drawing" id="includeDrawings">
+                                    <span>Drawings</span>
+                                </label>
+                                <label class="checkbox-label">
+                                    <input type="checkbox" name="includeType" value="Print" id="includePrints">
+                                    <span>Prints</span>
+                                </label>
+                            </div>
+                            <div class="filter-section">
+                                <div class="filter-section-title">Exclude:</div>
+                                <label class="checkbox-label">
+                                    <input type="checkbox" name="excludeType" value="Textile" id="excludeTextiles" checked>
+                                    <span>Textiles</span>
+                                </label>
+                                <label class="checkbox-label">
+                                    <input type="checkbox" name="excludeType" value="Fragment" id="excludeFragments" checked>
+                                    <span>Fragments</span>
+                                </label>
+                                <label class="checkbox-label">
+                                    <input type="checkbox" name="excludeType" value="Shard" id="excludeShards" checked>
+                                    <span>Shards</span>
+                                </label>
+                                <label class="checkbox-label">
+                                    <input type="checkbox" name="excludeType" value="Negative" id="excludeNegatives">
+                                    <span>Negatives</span>
+                                </label>
+                                <label class="checkbox-label">
+                                    <input type="checkbox" name="excludeType" value="Mount" id="excludeMounts">
+                                    <span>Mounts</span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <button class="primary-button" id="randomArtButton">
@@ -135,7 +258,7 @@
                 <div class="search-results-header">
                     <div class="search-results-count" id="searchResultsCount"></div>
                     <button class="close-search-button" id="closeSearchButton">
-                        <i class="fas fa-times"></i> Close Search
+                        <i class="fas fa-times"></i> <span class="desktop-only">Close Search</span>
                     </button>
                 </div>
                 <div class="search-results-grid" id="searchResultsGrid">
@@ -143,11 +266,11 @@
                 </div>
                 <div class="search-pagination" id="searchPagination">
                     <button class="pagination-button" id="searchPrevPage">
-                        <i class="fas fa-chevron-left"></i> Previous
+                        <i class="fas fa-chevron-left"></i> <span class="desktop-only">Previous</span>
                     </button>
                     <div class="pagination-info" id="searchPageInfo">Page 1 of 1</div>
                     <button class="pagination-button" id="searchNextPage">
-                        Next <i class="fas fa-chevron-right"></i>
+                        <span class="desktop-only">Next</span> <i class="fas fa-chevron-right"></i>
                     </button>
                 </div>
             </div>

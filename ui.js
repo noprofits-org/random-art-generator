@@ -7,44 +7,244 @@ function initUI() {
     const controlsDrawer = document.getElementById('controlsDrawer');
     const contentArea = document.getElementById('contentArea');
 
-    // Toggle drawer state when the button is clicked
-    toggleDrawerButton.addEventListener('click', () => {
-        controlsDrawer.classList.toggle('collapsed');
-        
-        // Check if drawer is now collapsed
-        const isCollapsed = controlsDrawer.classList.contains('collapsed');
-        
-        // Update the button icon
-        const iconElement = toggleDrawerButton.querySelector('i');
-        if (isCollapsed) {
-            iconElement.classList.remove('fa-chevron-left');
-            iconElement.classList.add('fa-chevron-right');
-        } else {
-            iconElement.classList.remove('fa-chevron-right');
-            iconElement.classList.add('fa-chevron-left');
-        }
-        
-        // Adjust content area on mobile if needed
-        if (window.innerWidth <= 768) {
-            contentArea.style.marginLeft = isCollapsed ? '0' : `${controlsDrawer.offsetWidth}px`;
-        }
-    });
+    // Check if mobile
+    const isMobile = window.innerWidth <= 768;
+
+    if (isMobile) {
+        initMobileUI();
+    } else {
+        // Desktop drawer toggle
+        toggleDrawerButton.addEventListener('click', () => {
+            controlsDrawer.classList.toggle('collapsed');
+            
+            // Check if drawer is now collapsed
+            const isCollapsed = controlsDrawer.classList.contains('collapsed');
+            
+            // Update the button icon
+            const iconElement = toggleDrawerButton.querySelector('i');
+            if (isCollapsed) {
+                iconElement.classList.remove('fa-chevron-left');
+                iconElement.classList.add('fa-chevron-right');
+            } else {
+                iconElement.classList.remove('fa-chevron-right');
+                iconElement.classList.add('fa-chevron-left');
+            }
+        });
+    }
 
     // Handle window resize for responsive behavior
+    let wasMobile = isMobile;
     window.addEventListener('resize', () => {
-        if (window.innerWidth <= 768) {
-            if (controlsDrawer.classList.contains('collapsed')) {
-                contentArea.style.marginLeft = '0';
+        const isNowMobile = window.innerWidth <= 768;
+        if (wasMobile !== isNowMobile) {
+            wasMobile = isNowMobile;
+            if (isNowMobile) {
+                initMobileUI();
             } else {
-                contentArea.style.marginLeft = `${controlsDrawer.offsetWidth}px`;
+                removeMobileUI();
             }
-        } else {
-            contentArea.style.marginLeft = '0'; // Reset margin on larger screens
         }
     });
     
     // Add a status indicator to the UI
     addStatusIndicator();
+}
+
+// Initialize mobile UI
+function initMobileUI() {
+    const mobileMenuButton = document.getElementById('mobileMenuButton');
+    const mobileOverlay = document.getElementById('mobileOverlay');
+    const controlsDrawer = document.getElementById('controlsDrawer');
+    const closeDrawer = document.getElementById('closeDrawer');
+    const artworkInfo = document.getElementById('artworkInfo');
+    const artworkContainer = document.getElementById('artworkContainer');
+    
+    // Mobile menu button
+    if (mobileMenuButton) {
+        mobileMenuButton.addEventListener('click', openMobileDrawer);
+    }
+    
+    // Close drawer button
+    if (closeDrawer) {
+        closeDrawer.addEventListener('click', closeMobileDrawer);
+    }
+    
+    // Overlay click
+    if (mobileOverlay) {
+        mobileOverlay.addEventListener('click', closeMobileDrawer);
+    }
+    
+    // Handle swipe down on drawer
+    initDrawerSwipe();
+    
+    // Handle collapsible artwork info
+    if (artworkInfo) {
+        initArtworkInfoSwipe();
+    }
+    
+    // Handle swipe gestures on artwork
+    if (artworkContainer) {
+        initArtworkSwipeGestures();
+    }
+}
+
+// Remove mobile UI event listeners
+function removeMobileUI() {
+    const controlsDrawer = document.getElementById('controlsDrawer');
+    controlsDrawer.classList.remove('active');
+    document.getElementById('mobileOverlay').classList.remove('active');
+}
+
+// Open mobile drawer
+function openMobileDrawer() {
+    const controlsDrawer = document.getElementById('controlsDrawer');
+    const mobileOverlay = document.getElementById('mobileOverlay');
+    
+    controlsDrawer.classList.add('active');
+    mobileOverlay.classList.add('active');
+    document.body.style.overflow = 'hidden';
+}
+
+// Close mobile drawer
+function closeMobileDrawer() {
+    const controlsDrawer = document.getElementById('controlsDrawer');
+    const mobileOverlay = document.getElementById('mobileOverlay');
+    
+    controlsDrawer.classList.remove('active');
+    mobileOverlay.classList.remove('active');
+    document.body.style.overflow = '';
+}
+
+// Initialize drawer swipe gestures
+function initDrawerSwipe() {
+    const drawer = document.getElementById('controlsDrawer');
+    const handle = drawer.querySelector('.mobile-drawer-handle');
+    let startY = 0;
+    let currentY = 0;
+    let isDragging = false;
+    
+    const handleStart = (e) => {
+        isDragging = true;
+        startY = e.type.includes('mouse') ? e.clientY : e.touches[0].clientY;
+        drawer.style.transition = 'none';
+    };
+    
+    const handleMove = (e) => {
+        if (!isDragging) return;
+        
+        currentY = e.type.includes('mouse') ? e.clientY : e.touches[0].clientY;
+        const deltaY = currentY - startY;
+        
+        if (deltaY > 0) {
+            drawer.style.transform = `translateY(${deltaY}px)`;
+        }
+    };
+    
+    const handleEnd = () => {
+        if (!isDragging) return;
+        isDragging = false;
+        
+        drawer.style.transition = '';
+        const deltaY = currentY - startY;
+        
+        if (deltaY > 100) {
+            closeMobileDrawer();
+        } else {
+            drawer.style.transform = '';
+        }
+    };
+    
+    // Touch events
+    handle.addEventListener('touchstart', handleStart, { passive: true });
+    handle.addEventListener('touchmove', handleMove, { passive: true });
+    handle.addEventListener('touchend', handleEnd);
+    
+    // Mouse events for testing
+    handle.addEventListener('mousedown', handleStart);
+    document.addEventListener('mousemove', handleMove);
+    document.addEventListener('mouseup', handleEnd);
+}
+
+// Initialize artwork info swipe
+function initArtworkInfoSwipe() {
+    const info = document.getElementById('artworkInfo');
+    let startY = 0;
+    let currentY = 0;
+    let isDragging = false;
+    
+    const handleStart = (e) => {
+        isDragging = true;
+        startY = e.type.includes('mouse') ? e.clientY : e.touches[0].clientY;
+        info.style.transition = 'none';
+    };
+    
+    const handleMove = (e) => {
+        if (!isDragging) return;
+        
+        currentY = e.type.includes('mouse') ? e.clientY : e.touches[0].clientY;
+        const deltaY = currentY - startY;
+        
+        if (deltaY > 0) {
+            info.style.transform = `translateY(${deltaY}px)`;
+        }
+    };
+    
+    const handleEnd = () => {
+        if (!isDragging) return;
+        isDragging = false;
+        
+        info.style.transition = '';
+        const deltaY = currentY - startY;
+        
+        if (deltaY > 50) {
+            info.classList.add('collapsed');
+        } else if (deltaY < -50) {
+            info.classList.remove('collapsed');
+        }
+        
+        info.style.transform = '';
+    };
+    
+    info.addEventListener('touchstart', handleStart, { passive: true });
+    info.addEventListener('touchmove', handleMove, { passive: true });
+    info.addEventListener('touchend', handleEnd);
+}
+
+// Initialize artwork swipe gestures
+function initArtworkSwipeGestures() {
+    const container = document.getElementById('artworkContainer');
+    let startX = 0;
+    let startY = 0;
+    let endX = 0;
+    let endY = 0;
+    
+    container.addEventListener('touchstart', (e) => {
+        startX = e.touches[0].clientX;
+        startY = e.touches[0].clientY;
+    }, { passive: true });
+    
+    container.addEventListener('touchend', (e) => {
+        endX = e.changedTouches[0].clientX;
+        endY = e.changedTouches[0].clientY;
+        
+        const deltaX = endX - startX;
+        const deltaY = endY - startY;
+        
+        // Check if horizontal swipe
+        if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 50) {
+            if (deltaX > 0) {
+                // Swipe right - previous artwork
+                console.log('Swipe right - previous artwork');
+                // Implement previous artwork logic
+            } else {
+                // Swipe left - next artwork
+                console.log('Swipe left - next artwork');
+                // Trigger random artwork button
+                const randomButton = document.getElementById('randomArtButton');
+                if (randomButton) randomButton.click();
+            }
+        }
+    }, { passive: true });
 }
 
 // Add a status indicator to the bottom of the screen
@@ -589,7 +789,7 @@ function showSearchMode(show = true) {
 }
 
 // Trigger search from UI
-function triggerSearch(query) {
+function triggerSearch(query, searchType = 'quick') {
     if (!query || !window.MetSearch) return;
     
     // Get current filters
@@ -598,8 +798,8 @@ function triggerSearch(query) {
     // Show search mode
     showSearchMode(true);
     
-    // Perform search
-    window.MetSearch.performSearch(query, filters);
+    // Perform search with type
+    window.MetSearch.performSearch(query, filters, searchType);
 }
 
 // Clear search from UI

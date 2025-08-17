@@ -1,405 +1,102 @@
-// init.js - Centralized initialization system
-// FIXED: Created centralized initialization to ensure proper loading order
+// init.js - Simple initialization for Met Museum app
+// Loads modules in sequence without complex state checking
 
-const MetInit = (() => {
-    let initialized = false;
-    let initPromise = null;
-    const initCallbacks = [];
-    const moduleStatus = {
-        config: false,
-        utils: false,
-        api: false,
-        favorites: false,
-        artwork: false,
-        ui: false,
-        filters: false,
-        search: false
-    };
-
-    // Check if a module is ready
-    function isModuleReady(moduleName) {
-        switch(moduleName) {
-            case 'config': return typeof window.MetConfig !== 'undefined';
-            case 'utils': return typeof window.MetUtils !== 'undefined';
-            case 'api': return typeof window.MetAPI !== 'undefined';
-            case 'favorites': return typeof window.MetFavorites !== 'undefined';
-            case 'artwork': return typeof window.MetArtwork !== 'undefined';
-            case 'ui': return typeof window.MetUI !== 'undefined';
-            case 'filters': return typeof window.MetFilters !== 'undefined';
-            case 'search': return typeof window.MetSearch !== 'undefined';
-            default: return false;
-        }
-    }
-
-    // Wait for specific modules to be ready
-    async function waitForModules(moduleNames) {
-        const checkInterval = 50; // Check every 50ms
-        const maxWait = 5000; // Maximum 5 seconds wait
-        const startTime = Date.now();
-
-        return new Promise((resolve, reject) => {
-            const checkModules = () => {
-                const allReady = moduleNames.every(name => isModuleReady(name));
-                
-                if (allReady) {
-                    moduleNames.forEach(name => moduleStatus[name] = true);
-                    resolve();
-                } else if (Date.now() - startTime > maxWait) {
-                    const missingModules = moduleNames.filter(name => !isModuleReady(name));
-                    reject(new Error(`Timeout waiting for modules: ${missingModules.join(', ')}`));
-                } else {
-                    setTimeout(checkModules, checkInterval);
-                }
-            };
-            
-            checkModules();
-        });
-    }
-
-    // Initialize the application
+(function() {
+    'use strict';
+    
+    // Simple initialization function
     async function initialize() {
-        if (initialized) {
-            window.MetLogger?.log('[Init] Already initialized');
-            return;
-        }
-
-        if (initPromise) {
-            window.MetLogger?.log('[Init] Initialization already in progress');
-            return initPromise;
-        }
-
-        initPromise = performInitialization();
-        return initPromise;
-    }
-
-    async function performInitialization() {
         try {
-            window.MetLogger?.log('[Init] Starting application initialization...');
-
-            // Phase 1: Wait for core utilities
-            window.MetLogger?.log('[Init] Phase 1: Loading core utilities...');
-            await waitForModules(['config', 'utils']);
-
-            // Phase 2: Wait for API and data modules
-            window.MetLogger?.log('[Init] Phase 2: Loading API and data modules...');
-            await waitForModules(['api', 'favorites']);
-
-            // Phase 3: Wait for UI modules
-            window.MetLogger?.log('[Init] Phase 3: Loading UI modules...');
-            await waitForModules(['artwork', 'ui', 'filters', 'search']);
-
-            // Phase 4: Initialize modules in order
-            window.MetLogger?.log('[Init] Phase 4: Initializing modules...');
+            window.MetLogger?.log('Starting app initialization...');
             
-            // Initialize favorites DB first
-            if (window.MetFavorites && window.MetFavorites.initFavoritesDB) {
+            // Wait for DOM to be ready
+            if (document.readyState === 'loading') {
+                await new Promise(resolve => {
+                    document.addEventListener('DOMContentLoaded', resolve);
+                });
+            }
+            
+            // Initialize modules in order
+            // 1. Initialize favorites database
+            if (window.MetFavorites?.initFavoritesDB) {
                 await window.MetFavorites.initFavoritesDB();
-                window.MetLogger?.log('[Init] Favorites database initialized');
+                window.MetLogger?.log('Favorites database initialized');
             }
-
-            // Initialize UI (includes offline detection)
-            if (window.initUI) {
-                window.initUI();
-                window.MetLogger?.log('[Init] UI initialized');
+            
+            // 2. Initialize UI
+            if (window.MetUI?.initUI) {
+                window.MetUI.initUI();
+                window.MetLogger?.log('UI initialized');
             }
-
-            // Initialize offline detection
-            if (window.initOfflineDetection) {
-                window.initOfflineDetection();
-                window.MetLogger?.log('[Init] Offline detection initialized');
-            }
-
-            // Initialize favorites view
-            if (window.initFavoritesView) {
-                window.initFavoritesView();
-                window.MetLogger?.log('[Init] Favorites view initialized');
-            }
-
-            // Initialize search
-            if (window.initSearchUI) {
-                window.initSearchUI();
-                window.MetLogger?.log('[Init] Search UI initialized');
-            }
-
-            // Register service worker
+            
+            // 3. Register service worker
             if ('serviceWorker' in navigator) {
                 try {
                     const registration = await navigator.serviceWorker.register('./service-worker.js');
-                    window.MetLogger?.log('[Init] Service Worker registered:', registration.scope);
-                    setupServiceWorkerHandlers(registration);
+                    window.MetLogger?.log('Service Worker registered:', registration.scope);
+                    
+                    // Listen for updates
+                    registration.addEventListener('updatefound', () => {
+                        const newWorker = registration.installing;
+                        newWorker.addEventListener('statechange', () => {
+                            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                                window.MetUI?.updateStatus?.('App update available - refresh to update', 'info');
+                            }
+                        });
+                    });
                 } catch (error) {
-                    console.error('[Init] Service Worker registration failed. Please refresh the page.');
-                }
-            }
-
-            // FIXED: Test proxy health before API connection
-            if (window.MetAPI && window.MetAPI.checkProxyHealthCached) {
-                window.MetLogger?.log('[Init] Checking proxy health...');
-                try {
-                    await window.MetAPI.checkProxyHealthCached();
-                } catch (error) {
-                    window.MetLogger?.warn('[Init] Proxy health check failed:', error);
+                    console.error('Service Worker registration failed:', error);
                 }
             }
             
-            // Test API connection
-            await testAPIConnection();
-
-            // Initialize filters after API is confirmed
-            if (window.MetFilters && window.MetFilters.initFilters) {
-                await window.MetFilters.initFilters();
-                window.MetLogger?.log('[Init] Filters initialized');
-            }
-
-            // Setup main event handlers
-            setupEventHandlers();
-
-            // Check for PWA launch parameters
-            checkPWALaunch();
-
-            initialized = true;
-            window.MetLogger?.log('[Init] Application initialization complete');
-
-            // Run any queued callbacks
-            initCallbacks.forEach(callback => callback());
-            initCallbacks.length = 0;
-
-        } catch (error) {
-            console.error('[Init] Application failed to initialize properly. Please refresh the page.');
-            if (window.MetUI && window.MetUI.showError) {
-                window.MetUI.showError('Application failed to initialize properly. Please refresh the page.');
-            }
-            throw error;
-        }
-    }
-
-    // Test API connection
-    async function testAPIConnection() {
-        if (!window.MetAPI) {
-            throw new Error('MetAPI not available');
-        }
-
-        try {
-            if (window.MetUI && window.MetUI.showLoading) {
-                window.MetUI.showLoading();
-                window.MetUI.updateLoadingMessage && window.MetUI.updateLoadingMessage('Connecting to Met API...');
-            }
-
-            const apiResult = await window.MetAPI.testApiConnection();
-
-            if (apiResult) {
-                window.MetLogger?.log('[Init] Connected to Met API successfully!');
-                if (window.MetUI) {
-                    if (window.MetUI.showConnectionStatus) {
-                        window.MetUI.showConnectionStatus(true);
-                    } else if (window.MetUI.updateStatus) {
-                        window.MetUI.updateStatus('Connected to Met API', 'success');
-                    }
-                }
-
-                if (window.MetUI && window.MetUI.hideLoading) {
-                    window.MetUI.hideLoading();
-                }
-
-                if (apiResult.departments && apiResult.departments.length > 0) {
-                    window.MetLogger?.log('[Init] Available departments:', apiResult.departments);
-                }
-            } else {
-                throw new Error('Failed to connect to Met API');
-            }
-        } catch (error) {
-            window.MetLogger?.error('[Init] API connection failed:', error);
-            if (window.MetUI) {
-                if (window.MetUI.showConnectionStatus) {
-                    window.MetUI.showConnectionStatus(false);
-                } else if (window.MetUI.updateStatus) {
-                    window.MetUI.updateStatus('Disconnected from Met API', 'error');
-                }
-                if (window.MetUI.hideLoading) {
-                    window.MetUI.hideLoading();
-                }
-                if (window.MetUI.showError) {
-                    window.MetUI.showError('Unable to connect to the Metropolitan Museum API. Please try again later.');
-                }
-            }
-            throw error;
-        }
-    }
-
-    // Setup service worker handlers
-    function setupServiceWorkerHandlers(registration) {
-        registration.addEventListener('updatefound', () => {
-            const newWorker = registration.installing;
-            window.MetLogger?.log('[Init] Service Worker update found');
-            
-            newWorker.addEventListener('statechange', () => {
-                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                    window.MetLogger?.log('[Init] New Service Worker installed, update available');
-                    if (window.MetUI && window.MetUI.updateStatus) {
-                        window.MetUI.updateStatus('App update available - refresh to update', 'info');
-                    }
-                }
-            });
-        });
-    }
-
-    // Setup main event handlers
-    function setupEventHandlers() {
-        const randomArtButton = document.getElementById('randomArtButton');
-        if (randomArtButton) {
-            randomArtButton.addEventListener('click', handleRandomArtwork);
-        }
-
-        // Keyboard shortcut for random artwork
-        document.addEventListener('keydown', (event) => {
-            if (event.code === 'Space' &&
-                document.activeElement.tagName !== 'INPUT' &&
-                document.activeElement.tagName !== 'TEXTAREA' &&
-                document.activeElement.tagName !== 'SELECT') {
-                event.preventDefault();
-                if (randomArtButton) {
-                    randomArtButton.click();
-                }
-            }
-        });
-    }
-
-    // Handle random artwork button click
-    async function handleRandomArtwork() {
-        window.MetLogger?.log('[Init] Random artwork button clicked');
-
-        // REMOVED: Filter functionality
-        // const filters = window.MetFilters ? window.MetFilters.getCurrentFilters() : {};
-        // console.log('[Init] Current filters:', filters);
-
-        if (window.MetAPI) {
-            if (window.MetUI && window.MetUI.showLoading) {
-                window.MetUI.showLoading();
-                window.MetUI.updateLoadingMessage && 
-                    window.MetUI.updateLoadingMessage('Finding the perfect artwork for you...');
-            }
-
-            setTimeout(async () => {
+            // 4. Test API connection
+            if (window.MetAPI?.testConnection) {
                 try {
-                    // SIMPLIFIED: No filters passed
-                    const artwork = await window.MetAPI.getRandomArtwork({});
-
-                    if (artwork && window.MetArtwork) {
-                        window.MetArtwork.displayArtwork(artwork);
+                    window.MetUI?.showLoading?.();
+                    window.MetUI?.updateLoadingMessage?.('Connecting to Met Museum API...');
+                    
+                    const connected = await window.MetAPI.testConnection();
+                    
+                    if (connected) {
+                        window.MetLogger?.log('Connected to Met API successfully');
+                        window.MetUI?.updateStatus?.('Connected to Met API', 'success');
+                    } else {
+                        throw new Error('Failed to connect to Met API');
                     }
+                    
+                    window.MetUI?.hideLoading?.();
                 } catch (error) {
-                    window.MetLogger?.error('[Init] Error getting random artwork:', error);
-                    if (window.MetUI) {
-                        window.MetUI.hideLoading && window.MetUI.hideLoading();
-                        window.MetUI.showError && window.MetUI.showError('Error fetching artwork: ' + error.message);
-                    }
+                    window.MetLogger?.error('API connection failed:', error);
+                    window.MetUI?.hideLoading?.();
+                    window.MetUI?.showError?.('Unable to connect to the Met Museum API. Please check your connection.');
                 }
-            }, 500);
+            }
+            
+            // 5. Test proxy health in background
+            if (window.MetAPI?.testProxyHealth) {
+                window.MetAPI.testProxyHealth().catch(err => {
+                    window.MetLogger?.warn('Proxy health check failed:', err);
+                });
+            }
+            
+            // 6. Check for PWA launch with action
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.get('action') === 'random') {
+                window.MetLogger?.log('Auto-loading random artwork from PWA');
+                setTimeout(() => {
+                    document.getElementById('randomArtButton')?.click();
+                }, 1000);
+            }
+            
+            window.MetLogger?.log('App initialization complete');
+            
+        } catch (error) {
+            console.error('App initialization failed:', error);
+            window.MetUI?.showError?.('Application failed to initialize. Please refresh the page.');
         }
-    }
-
-    // Check PWA launch parameters
-    function checkPWALaunch() {
-        const urlParams = new URLSearchParams(window.location.search);
-        const action = urlParams.get('action');
-        
-        if (action === 'random') {
-            window.MetLogger?.log('[Init] Auto-loading random artwork from PWA shortcut');
-            setTimeout(() => {
-                const randomArtButton = document.getElementById('randomArtButton');
-                if (randomArtButton) {
-                    randomArtButton.click();
-                }
-            }, 1000);
-        }
-    }
-
-    // Queue a callback to run after initialization
-    function onReady(callback) {
-        if (initialized) {
-            callback();
-        } else {
-            initCallbacks.push(callback);
-        }
-    }
-
-    // FIXED: Add cleanup function for proper teardown
-    function cleanup() {
-        window.MetLogger?.log('[Init] Starting application cleanup...');
-        
-        // Clean up UI handlers
-        if (window.MetUI && window.MetUI.destroy) {
-            window.MetUI.destroy();
-        }
-        
-        // Clean up event handlers
-        if (window.MetEventManager) {
-            window.MetEventManager.cleanup();
-        }
-        
-        // Clean up favorites
-        if (window.MetFavorites && window.MetFavorites.cleanup) {
-            window.MetFavorites.cleanup();
-        }
-        
-        // Clear all caches
-        if (window.MetAPI) {
-            window.MetAPI.clearAllCaches && window.MetAPI.clearAllCaches();
-        }
-        
-        // Clean up state manager
-        if (window.MetState && window.MetState.reset) {
-            window.MetState.reset();
-        }
-        
-        // Clean up any virtual scrollers
-        if (window.virtualScroller) {
-            window.virtualScroller.destroy();
-            window.virtualScroller = null;
-        }
-        
-        // Reset initialization state
-        initialized = false;
-        initPromise = null;
-        initCallbacks.length = 0;
-        
-        // Reset module status
-        Object.keys(moduleStatus).forEach(key => moduleStatus[key] = false);
-        
-        window.MetLogger?.log('[Init] Cleanup complete');
     }
     
-    // Public API
-    return {
-        initialize,
-        onReady,
-        cleanup,
-        isReady: () => initialized,
-        getStatus: () => ({ initialized, moduleStatus })
-    };
+    // Start initialization
+    initialize();
+    
 })();
-
-// Make available globally
-window.MetInit = MetInit;
-
-// Start initialization when DOM is ready
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => MetInit.initialize());
-} else {
-    // DOM already loaded
-    MetInit.initialize();
-}
-
-// FIXED: Add global cleanup on page unload
-window.addEventListener('beforeunload', () => {
-    if (window.MetInit && window.MetInit.cleanup) {
-        window.MetInit.cleanup();
-    }
-});
-
-// Also handle pagehide for mobile browsers
-window.addEventListener('pagehide', () => {
-    if (window.MetInit && window.MetInit.cleanup) {
-        window.MetInit.cleanup();
-    }
-});

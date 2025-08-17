@@ -21,9 +21,18 @@ async function displayArtwork(artwork) {
         const imgContainer = document.createElement('div');
         imgContainer.className = 'artwork-image-container';
         
-        // Create loading indicator
+        // Create loading indicator with progress
         const loadingIndicator = document.createElement('div');
-        loadingIndicator.className = 'loading-spinner';
+        loadingIndicator.className = 'loading-indicator';
+        loadingIndicator.innerHTML = `
+            <div class="loading-spinner"></div>
+            <div class="loading-progress" style="display: none;">
+                <div class="progress-bar">
+                    <div class="progress-fill" style="width: 0%"></div>
+                </div>
+                <div class="progress-text">0%</div>
+            </div>
+        `;
         imgContainer.appendChild(loadingIndicator);
         
         // Create the image element
@@ -31,38 +40,130 @@ async function displayArtwork(artwork) {
         img.className = 'artwork-image hidden';
         img.alt = artwork.title || 'Artwork from The Metropolitan Museum of Art';
         
+        // Create blurred placeholder
+        const placeholderCanvas = document.createElement('canvas');
+        placeholderCanvas.className = 'image-placeholder';
+        imgContainer.appendChild(placeholderCanvas);
+        
         // Use progressive image loading
         const lowResImg = artwork.primaryImageSmall || artwork.primaryImage;
         const highResImg = artwork.primaryImage;
         
+        // Function to create blur placeholder from small image
+        const createBlurPlaceholder = async (imageUrl) => {
+            return new Promise((resolve) => {
+                const tempImg = new Image();
+                tempImg.crossOrigin = 'anonymous';
+                tempImg.onload = () => {
+                    const ctx = placeholderCanvas.getContext('2d');
+                    placeholderCanvas.width = 32; // Very small for blur effect
+                    placeholderCanvas.height = 32;
+                    ctx.filter = 'blur(3px)';
+                    ctx.drawImage(tempImg, 0, 0, 32, 32);
+                    placeholderCanvas.style.filter = 'blur(20px) brightness(1.1)';
+                    placeholderCanvas.classList.add('visible');
+                    resolve();
+                };
+                tempImg.onerror = () => resolve();
+                tempImg.src = imageUrl;
+            });
+        };
+        
         // Load low-res first if available
         if (lowResImg !== highResImg && artwork.primaryImageSmall) {
+            const lowResUrl = window.MetAPI.loadArtworkImage(lowResImg);
+            await createBlurPlaceholder(lowResUrl);
+            
+            // Also load small image for intermediate quality
             const placeholder = new Image();
-            placeholder.src = window.MetAPI.loadArtworkImage(lowResImg);
+            placeholder.src = lowResUrl;
             placeholder.onload = () => {
-                img.style.filter = 'blur(5px)';
-                img.style.transition = 'filter 0.3s';
+                img.style.filter = 'blur(8px) brightness(1.05)';
+                img.style.transition = 'filter 0.6s ease-out';
                 img.src = placeholder.src;
                 img.classList.remove('hidden');
+                placeholderCanvas.style.opacity = '0';
             };
         }
+        
+        // Function to track download progress
+        const loadImageWithProgress = (url) => {
+            return new Promise((resolve, reject) => {
+                const xhr = new XMLHttpRequest();
+                xhr.open('GET', url, true);
+                xhr.responseType = 'blob';
+                
+                xhr.onprogress = (event) => {
+                    if (event.lengthComputable) {
+                        const percentComplete = Math.round((event.loaded / event.total) * 100);
+                        const progressEl = loadingIndicator.querySelector('.loading-progress');
+                        const progressFill = loadingIndicator.querySelector('.progress-fill');
+                        const progressText = loadingIndicator.querySelector('.progress-text');
+                        
+                        if (progressEl && event.total > 1048576) { // Show progress for images > 1MB
+                            progressEl.style.display = 'block';
+                            loadingIndicator.querySelector('.loading-spinner').style.display = 'none';
+                            progressFill.style.width = percentComplete + '%';
+                            progressText.textContent = percentComplete + '%';
+                        }
+                    }
+                };
+                
+                xhr.onload = () => {
+                    if (xhr.status === 200) {
+                        const blob = xhr.response;
+                        const blobUrl = URL.createObjectURL(blob);
+                        resolve(blobUrl);
+                    } else {
+                        reject(new Error('Failed to load image'));
+                    }
+                };
+                
+                xhr.onerror = () => reject(new Error('Network error'));
+                xhr.ontimeout = () => reject(new Error('Request timeout'));
+                xhr.timeout = 30000; // 30 second timeout
+                
+                xhr.send();
+            });
+        };
         
         // Handle high-res image loading
         img.onload = function() {
             loadingIndicator.remove();
+            placeholderCanvas.remove();
             img.classList.remove('hidden');
-            // Remove blur when high-res loads
+            // Smooth transition from blur
             if (img.style.filter) {
-                setTimeout(() => {
-                    img.style.filter = '';
-                }, 100);
+                requestAnimationFrame(() => {
+                    img.style.filter = 'none';
+                });
+            }
+            // Clean up blob URL if used
+            if (img.src.startsWith('blob:')) {
+                setTimeout(() => URL.revokeObjectURL(img.src), 1000);
             }
         };
         
         img.onerror = function() {
-            // FIXED: Removed direct URL fallback that won't work due to CORS
-            // Instead, try alternative proxy or show better placeholder
             loadingIndicator.remove();
+            placeholderCanvas.remove();
+            
+            // Determine error type
+            const errorType = img.dataset.errorType || 'unknown';
+            let errorMessage = 'We couldn\'t load the image for this artwork.';
+            let errorDetails = '';
+            
+            if (errorType === 'timeout') {
+                errorMessage = 'Image loading timed out';
+                errorDetails = 'The image is taking too long to load. This might be due to a slow connection.';
+            } else if (errorType === 'proxy') {
+                errorDetails = 'Our image proxy service is having issues. Please try again in a moment.';
+            } else if (!navigator.onLine) {
+                errorMessage = 'You appear to be offline';
+                errorDetails = 'Please check your internet connection and try again.';
+            } else {
+                errorDetails = 'This may be due to network issues or the image being temporarily unavailable.';
+            }
             
             // Check if we have a small image as fallback
             if (artwork.primaryImageSmall && artwork.primaryImageSmall !== highResImg && !img.dataset.smallImageTried) {
@@ -73,19 +174,21 @@ async function displayArtwork(artwork) {
                 return;
             }
             
-            // All image loading attempts failed - show enhanced placeholder
+            // All image loading attempts failed - show enhanced error state
             imgContainer.innerHTML = `
                 <div class="artwork-placeholder artwork-placeholder-error">
                     <div class="placeholder-icon">
                         <i class="fas fa-image"></i>
                         <i class="fas fa-exclamation-circle error-badge"></i>
                     </div>
-                    <h3>Image Unavailable</h3>
-                    <p>We couldn't load the image for this artwork.</p>
-                    <p class="error-details">This may be due to network issues or proxy limitations.</p>
+                    <h3>${errorMessage}</h3>
+                    <p class="error-details">${errorDetails}</p>
                     <div class="placeholder-actions">
-                        <button class="retry-button" id="retryImageBtn">
+                        <button class="retry-button primary" id="retryImageBtn">
                             <i class="fas fa-redo"></i> Try Again
+                        </button>
+                        <button class="retry-button secondary" id="retryDifferentBtn">
+                            <i class="fas fa-server"></i> Try Different Server
                         </button>
                         <a href="${artwork.objectURL}" target="_blank" class="view-met-link">
                             <i class="fas fa-external-link-alt"></i> View on Met Website
@@ -94,18 +197,36 @@ async function displayArtwork(artwork) {
                 </div>
             `;
             
-            // Add retry button functionality with exponential backoff
+            // Add retry button functionality
             const retryBtn = imgContainer.querySelector('#retryImageBtn');
+            const retryDifferentBtn = imgContainer.querySelector('#retryDifferentBtn');
+            
             if (retryBtn) {
                 let retryCount = 0;
                 retryBtn.addEventListener('click', async function() {
                     retryCount++;
                     retryBtn.disabled = true;
+                    retryDifferentBtn.disabled = true;
                     retryBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Retrying...';
                     
                     // Wait with exponential backoff
                     const delay = Math.min(1000 * Math.pow(2, retryCount - 1), 5000);
                     await new Promise(resolve => setTimeout(resolve, delay));
+                    
+                    displayArtwork(artwork);
+                });
+            }
+            
+            if (retryDifferentBtn) {
+                retryDifferentBtn.addEventListener('click', async function() {
+                    retryBtn.disabled = true;
+                    retryDifferentBtn.disabled = true;
+                    retryDifferentBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Switching...';
+                    
+                    // Force proxy rotation
+                    if (window.MetAPI && window.MetAPI.rotateProxy) {
+                        await window.MetAPI.rotateProxy();
+                    }
                     
                     displayArtwork(artwork);
                 });
@@ -123,27 +244,45 @@ async function displayArtwork(artwork) {
         img.loading = 'lazy';
         img.decoding = 'async';
         
-        // FIXED: Add smart proxy selection for image loading
+        // Smart proxy selection for image loading with progress tracking
         const loadImageWithProxy = async () => {
             try {
-                // First try with current proxy
                 const proxyUrl = window.MetAPI.loadArtworkImage(highResImg);
-                img.src = proxyUrl;
                 window.MetLogger?.log(`Loading image via proxy: ${proxyUrl}`);
+                
+                // Try to load with progress tracking for large images
+                if (artwork.primaryImage && !artwork.primaryImageSmall) {
+                    // No small image, might be large - use XHR for progress
+                    try {
+                        const blobUrl = await loadImageWithProgress(proxyUrl);
+                        img.src = blobUrl;
+                        return;
+                    } catch (xhrError) {
+                        window.MetLogger?.warn('Progress loading failed, falling back to regular load:', xhrError);
+                    }
+                }
+                
+                // Regular loading
+                img.src = proxyUrl;
                 
                 // Set a timeout for initial load attempt
                 const loadTimeout = setTimeout(() => {
-                    // If image hasn't loaded in 10 seconds, try fallback
                     if (!img.complete || img.naturalWidth === 0) {
-                        window.MetLogger?.log('Initial proxy slow, trying fallback...');
+                        window.MetLogger?.log('Image loading timeout, trying fallback...');
+                        img.dataset.errorType = 'timeout';
                         tryFallbackProxy();
                     }
-                }, 10000);
+                }, 15000); // 15 second timeout
                 
                 // Clear timeout if image loads successfully
                 img.addEventListener('load', () => clearTimeout(loadTimeout), { once: true });
+                img.addEventListener('error', () => {
+                    clearTimeout(loadTimeout);
+                    img.dataset.errorType = 'proxy';
+                }, { once: true });
             } catch (error) {
                 window.MetLogger?.error('Error setting up image load:', error);
+                img.dataset.errorType = 'proxy';
                 tryFallbackProxy();
             }
         };

@@ -1362,20 +1362,94 @@ mark {
     margin-bottom: 1rem;
 }
 
-/* Retry button */
+/* Enhanced error placeholder */
+.artwork-placeholder-error {
+    max-width: 500px;
+    margin: 0 auto;
+}
+
+.placeholder-icon {
+    position: relative;
+    display: inline-block;
+    margin-bottom: 1.5rem;
+}
+
+.placeholder-icon .error-badge {
+    position: absolute;
+    bottom: -5px;
+    right: -5px;
+    font-size: 1.5rem;
+    color: #dc3545;
+    background: white;
+    border-radius: 50%;
+}
+
+.error-details {
+    color: #666;
+    font-size: 0.9rem;
+    margin-bottom: 1.5rem;
+}
+
+.placeholder-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    align-items: center;
+}
+
+/* Retry buttons */
 .retry-button {
-    margin-top: 1rem;
-    padding: 0.5rem 1.5rem;
-    background-color: var(--primary-color);
-    color: white;
+    padding: 0.75rem 1.5rem;
     border: none;
     border-radius: 4px;
     cursor: pointer;
-    transition: background-color 0.2s;
+    transition: all 0.2s;
+    font-size: 0.9rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 180px;
+    justify-content: center;
 }
 
-.retry-button:hover {
+.retry-button.primary {
+    background-color: var(--primary-color);
+    color: white;
+}
+
+.retry-button.primary:hover:not(:disabled) {
     background-color: #0056b3;
+}
+
+.retry-button.secondary {
+    background-color: #6c757d;
+    color: white;
+}
+
+.retry-button.secondary:hover:not(:disabled) {
+    background-color: #5a6268;
+}
+
+.retry-button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.view-met-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--primary-color);
+    text-decoration: none;
+    padding: 0.5rem 1rem;
+    border: 1px solid var(--primary-color);
+    border-radius: 4px;
+    transition: all 0.2s;
+}
+
+.view-met-link:hover {
+    background-color: var(--primary-color);
+    color: white;
 }/* Favorites Button */
 .view-favorites-button {
     margin-top: 1rem;
@@ -1541,16 +1615,68 @@ mark {
     white-space: nowrap;
 }
 
+/* Skeleton loaders for favorites */
+.skeleton-loader {
+    pointer-events: none;
+}
+
+.skeleton-image {
+    width: 100%;
+    height: 200px;
+    background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+    background-size: 200% 100%;
+    animation: skeleton-loading 1.5s infinite;
+}
+
+.skeleton-text {
+    background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+    background-size: 200% 100%;
+    animation: skeleton-loading 1.5s infinite;
+    border-radius: 4px;
+}
+
+.skeleton-title {
+    height: 16px;
+    width: 80%;
+    margin-bottom: 0.5rem;
+}
+
+.skeleton-artist {
+    height: 14px;
+    width: 60%;
+}
+
+@keyframes skeleton-loading {
+    0% {
+        background-position: 200% 0;
+    }
+    100% {
+        background-position: -200% 0;
+    }
+}
+
+/* Lazy loaded images */
+.favorite-item-image.lazy-load {
+    opacity: 0;
+    transition: opacity 0.3s ease-in-out;
+}
+
+.favorite-item-image.lazy-load.loaded {
+    opacity: 1;
+}
+
 .favorites-empty {
     text-align: center;
     padding: 3rem;
     color: #6c757d;
+    grid-column: 1 / -1;
 }
 
 .favorites-empty i {
     font-size: 3rem;
     margin-bottom: 1rem;
     display: block;
+    color: #dee2e6;
 }
 
 /* Favorite Button (in artwork info) */
@@ -1593,6 +1719,66 @@ mark {
 
 .favorite-button i {
     font-size: 1rem;
+}
+
+/* Image placeholder canvas */
+.image-placeholder {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    opacity: 0;
+    transition: opacity 0.3s ease-out;
+    z-index: 1;
+}
+
+.image-placeholder.visible {
+    opacity: 1;
+}
+
+/* Loading indicator with progress */
+.loading-indicator {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 2;
+    text-align: center;
+}
+
+.loading-progress {
+    margin-top: 1rem;
+    width: 200px;
+}
+
+.progress-bar {
+    width: 100%;
+    height: 6px;
+    background-color: rgba(0, 0, 0, 0.1);
+    border-radius: 3px;
+    overflow: hidden;
+    margin-bottom: 0.5rem;
+}
+
+.progress-fill {
+    height: 100%;
+    background-color: var(--primary-color);
+    transition: width 0.3s ease;
+    border-radius: 3px;
+}
+
+.progress-text {
+    font-size: 0.9rem;
+    color: #666;
+    font-weight: 500;
+}
+
+/* Blur transition for progressive loading */
+.artwork-image {
+    transition: filter 0.6s ease-out, transform 0.3s ease;
 }
 
 @keyframes favorite-animation {

@@ -6,25 +6,43 @@
     
     // Configuration
     const MET_API_BASE_URL = window.MetConfig?.MET_API_BASE_URL || 'https://collectionapi.metmuseum.org/public/collection/v1';
-    const CORS_PROXY_URL = window.MetConfig?.CORS_PROXY_URL || 'https://cors-proxy-xi-ten.vercel.app/api/proxy';
     const REQUEST_TIMEOUT = window.MetConfig?.REQUEST_TIMEOUT || 15000;
     
-    // Alternative CORS proxies for fallback
-    const CORS_PROXY_FALLBACKS = [
-        'https://corsproxy.io/?',
-        'https://api.allorigins.win/raw?url='
-    ];
+    // Simplified proxy configuration - one primary, one fallback
+    const PROXY_CONFIG = {
+        primary: {
+            url: window.MetConfig?.CORS_PROXY_URL || 'https://cors-proxy-xi-ten.vercel.app/api/proxy',
+            format: 'query' // 'query' means ?url=, 'path' means direct append
+        },
+        fallback: {
+            url: 'https://corsproxy.io/?',
+            format: 'path'
+        }
+    };
     
     // Simple cache for object details
     const detailsCache = new Map();
     const CACHE_DURATION = 30 * 60 * 1000; // 30 minutes
     
-    let currentProxyIndex = 0;
+    // Proxy state
+    let currentProxy = 'primary';
+    let proxyHealthCache = {
+        primary: { healthy: true, lastCheck: 0 },
+        fallback: { healthy: true, lastCheck: 0 }
+    };
+    const PROXY_HEALTH_CHECK_INTERVAL = 5 * 60 * 1000; // 5 minutes
     
     // Helper: Make API request with timeout
     async function fetchWithTimeout(url, timeout = REQUEST_TIMEOUT) {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), timeout);
+        
+        // Show timeout warning after 10 seconds
+        const warningTimeout = setTimeout(() => {
+            if (window.MetUI && window.MetUI.updateStatus) {
+                window.MetUI.updateStatus('Taking longer than usual...', 'warning');
+            }
+        }, 10000);
         
         try {
             const response = await fetch(url, { 
@@ -35,49 +53,89 @@
                 }
             });
             clearTimeout(timeoutId);
+            clearTimeout(warningTimeout);
             
             if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
+                const errorMessage = response.status === 503 ? 'Service temporarily unavailable' :
+                                    response.status === 429 ? 'Too many requests - please wait a moment' :
+                                    response.status === 404 ? 'Content not found' :
+                                    `Server error (${response.status})`;
+                throw new Error(errorMessage);
             }
             
             return await response.json();
         } catch (error) {
             clearTimeout(timeoutId);
+            clearTimeout(warningTimeout);
+            
             if (error.name === 'AbortError') {
-                throw new Error('Request timeout');
+                const timeoutMessage = timeout > 20000 ? 'Request took too long - the server might be busy' :
+                                      'Request timed out - please check your connection';
+                throw new Error(timeoutMessage);
             }
             throw error;
         }
     }
     
-    // Helper: Get proxy URL with rotation support
-    function getProxyUrl(targetUrl, proxyIndex = currentProxyIndex) {
-        const proxies = [CORS_PROXY_URL, ...CORS_PROXY_FALLBACKS];
-        const proxy = proxies[proxyIndex % proxies.length];
+    // Helper: Get proxy URL
+    function getProxyUrl(targetUrl, useProxy = currentProxy) {
+        const proxy = PROXY_CONFIG[useProxy];
         
-        if (proxy.includes('?')) {
-            return `${proxy}${encodeURIComponent(targetUrl)}`;
+        if (proxy.format === 'path') {
+            return `${proxy.url}${encodeURIComponent(targetUrl)}`;
         } else {
-            return `${proxy}?url=${encodeURIComponent(targetUrl)}`;
+            return `${proxy.url}?url=${encodeURIComponent(targetUrl)}`;
+        }
+    }
+    
+    // Rotate to next proxy
+    function rotateProxy() {
+        const previousProxy = currentProxy;
+        currentProxy = currentProxy === 'primary' ? 'fallback' : 'primary';
+        window.MetLogger?.log(`Switched proxy from ${previousProxy} to ${currentProxy}`);
+        
+        // Show proxy info in dev mode
+        if (window.MetConfig?.devMode || window.location.hostname === 'localhost') {
+            showProxyStatus(`Using ${currentProxy} proxy`);
+        }
+        
+        return currentProxy;
+    }
+    
+    // Show proxy status (dev mode only)
+    function showProxyStatus(message) {
+        if (window.MetUI && window.MetUI.updateStatus) {
+            window.MetUI.updateStatus(message, 'info');
         }
     }
     
     // Helper: Fetch through CORS proxy with fallback
-    async function fetchWithProxy(endpoint, retryProxyIndex = 0) {
+    async function fetchWithProxy(endpoint, useProxy = null) {
         const fullUrl = `${MET_API_BASE_URL}${endpoint}`;
-        const proxiedUrl = getProxyUrl(fullUrl, retryProxyIndex);
+        const proxyToUse = useProxy || currentProxy;
+        const proxiedUrl = getProxyUrl(fullUrl, proxyToUse);
         
         try {
-            window.MetLogger?.log(`Fetching: ${endpoint}`);
-            return await fetchWithTimeout(proxiedUrl);
-        } catch (error) {
-            window.MetLogger?.error('API request failed:', error);
+            window.MetLogger?.log(`Fetching: ${endpoint} via ${proxyToUse} proxy`);
+            const result = await fetchWithTimeout(proxiedUrl);
             
-            // Try next proxy if available
-            const proxies = [CORS_PROXY_URL, ...CORS_PROXY_FALLBACKS];
-            if (retryProxyIndex < proxies.length - 1) {
-                window.MetLogger?.log(`Trying fallback proxy ${retryProxyIndex + 1}`);
-                return fetchWithProxy(endpoint, retryProxyIndex + 1);
+            // Mark proxy as healthy
+            proxyHealthCache[proxyToUse].healthy = true;
+            proxyHealthCache[proxyToUse].lastCheck = Date.now();
+            
+            return result;
+        } catch (error) {
+            window.MetLogger?.error(`${proxyToUse} proxy failed:`, error);
+            
+            // Mark proxy as unhealthy
+            proxyHealthCache[proxyToUse].healthy = false;
+            proxyHealthCache[proxyToUse].lastCheck = Date.now();
+            
+            // Try fallback if using primary
+            if (proxyToUse === 'primary' && proxyHealthCache.fallback.healthy) {
+                window.MetLogger?.log('Trying fallback proxy...');
+                rotateProxy();
+                return fetchWithProxy(endpoint, 'fallback');
             }
             
             throw error;
@@ -228,7 +286,7 @@
         }
     }
     
-    // Load artwork image through proxy with smart fallback
+    // Load artwork image through proxy
     function loadArtworkImage(imageUrl) {
         if (!imageUrl) return '';
         
@@ -241,7 +299,28 @@
         const secureUrl = imageUrl.replace(/^http:/, 'https:');
         
         // Use current proxy
-        return getProxyUrl(secureUrl, currentProxyIndex);
+        return getProxyUrl(secureUrl, currentProxy);
+    }
+    
+    // Load image with explicit fallback attempt
+    async function loadArtworkImageWithFallback(imageUrl) {
+        if (!imageUrl) return '';
+        
+        // Try fallback proxy if primary is unhealthy
+        if (currentProxy === 'primary' && !proxyHealthCache.primary.healthy && proxyHealthCache.fallback.healthy) {
+            const previousProxy = currentProxy;
+            rotateProxy();
+            window.MetLogger?.log(`Primary proxy unhealthy, using ${currentProxy} for image`);
+            
+            // Restore previous proxy after this request
+            setTimeout(() => {
+                if (currentProxy !== previousProxy && proxyHealthCache.primary.healthy) {
+                    currentProxy = previousProxy;
+                }
+            }, 100);
+        }
+        
+        return loadArtworkImage(imageUrl);
     }
     
     // Get cached artworks from service worker
@@ -288,37 +367,76 @@
         }
     }
     
-    // Test proxy health and select fastest one
+    // Test proxy health on startup
     async function testProxyHealth() {
-        const proxies = [CORS_PROXY_URL, ...CORS_PROXY_FALLBACKS];
         const testImageUrl = 'https://images.metmuseum.org/CRDImages/ep/web-large/DT1567.jpg';
         
         window.MetLogger?.log('Testing proxy health...');
         
-        for (let i = 0; i < proxies.length; i++) {
+        // Test both proxies in parallel
+        const tests = ['primary', 'fallback'].map(async (proxyType) => {
+            // Skip if recently checked
+            const cache = proxyHealthCache[proxyType];
+            if (Date.now() - cache.lastCheck < PROXY_HEALTH_CHECK_INTERVAL) {
+                return { proxy: proxyType, healthy: cache.healthy, cached: true };
+            }
+            
             try {
-                const proxiedUrl = getProxyUrl(testImageUrl, i);
+                const proxiedUrl = getProxyUrl(testImageUrl, proxyType);
                 const controller = new AbortController();
                 const timeoutId = setTimeout(() => controller.abort(), 3000);
                 
+                const startTime = Date.now();
                 const response = await fetch(proxiedUrl, {
                     method: 'HEAD',
                     signal: controller.signal
                 });
+                const responseTime = Date.now() - startTime;
                 
                 clearTimeout(timeoutId);
                 
-                if (response.ok) {
-                    currentProxyIndex = i;
-                    window.MetLogger?.log(`Selected proxy: ${proxies[i]}`);
-                    return true;
-                }
+                const healthy = response.ok;
+                proxyHealthCache[proxyType] = {
+                    healthy,
+                    lastCheck: Date.now(),
+                    responseTime: healthy ? responseTime : null
+                };
+                
+                return { proxy: proxyType, healthy, responseTime };
             } catch (error) {
-                window.MetLogger?.warn(`Proxy ${proxies[i]} failed: ${error.message}`);
+                proxyHealthCache[proxyType] = {
+                    healthy: false,
+                    lastCheck: Date.now(),
+                    responseTime: null
+                };
+                return { proxy: proxyType, healthy: false, error: error.message };
             }
+        });
+        
+        const results = await Promise.all(tests);
+        
+        // Select best proxy
+        const healthyProxies = results.filter(r => r.healthy);
+        if (healthyProxies.length === 0) {
+            window.MetLogger?.error('No healthy proxies found');
+            return false;
         }
         
-        return false;
+        // Prefer primary if both are healthy
+        if (healthyProxies.find(r => r.proxy === 'primary')) {
+            currentProxy = 'primary';
+        } else {
+            currentProxy = healthyProxies[0].proxy;
+        }
+        
+        window.MetLogger?.log(`Selected ${currentProxy} proxy (${healthyProxies.length} healthy proxies)`);
+        
+        // Show status in dev mode
+        if (window.MetConfig?.devMode || window.location.hostname === 'localhost') {
+            showProxyStatus(`Proxy: ${currentProxy} ✓`);
+        }
+        
+        return true;
     }
     
     // Clear cache
@@ -327,15 +445,37 @@
         window.MetLogger?.log('API cache cleared');
     }
     
+    // Initialize proxy on startup
+    async function initializeAPI() {
+        // Test proxy health on startup
+        await testProxyHealth();
+        
+        // Periodically recheck proxy health
+        setInterval(() => {
+            testProxyHealth();
+        }, PROXY_HEALTH_CHECK_INTERVAL);
+    }
+    
+    // Initialize when DOM is ready
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initializeAPI);
+    } else {
+        initializeAPI();
+    }
+    
     // Public API
     window.MetAPI = {
         getRandomArtwork,
         getObjectDetails,
         testConnection,
         loadArtworkImage,
+        loadArtworkImageWithFallback,
         getCachedArtworks,
         testProxyHealth,
-        clearCache
+        rotateProxy,
+        clearCache,
+        getCurrentProxy: () => currentProxy,
+        getProxyHealth: () => proxyHealthCache
     };
     
 })();

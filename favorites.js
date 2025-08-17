@@ -75,8 +75,157 @@ async function initFavoritesDB() {
     });
 }
 
-// Create thumbnail from image URL with timeout
-async function createThumbnail(imageUrl) {
+// Thumbnail cache management
+const thumbnailCache = new Map();
+const THUMBNAIL_CACHE_NAME = 'met-thumbnails';
+const THUMBNAIL_CACHE_VERSION = 1;
+
+// Initialize thumbnail cache in IndexedDB
+async function initThumbnailCache() {
+    return new Promise((resolve, reject) => {
+        const request = indexedDB.open(THUMBNAIL_CACHE_NAME, THUMBNAIL_CACHE_VERSION);
+        
+        request.onerror = () => {
+            window.MetLogger?.error('Failed to open thumbnail cache');
+            reject(request.error);
+        };
+        
+        request.onsuccess = (event) => {
+            resolve(event.target.result);
+        };
+        
+        request.onupgradeneeded = (event) => {
+            const db = event.target.result;
+            if (!db.objectStoreNames.contains('thumbnails')) {
+                const store = db.createObjectStore('thumbnails', { keyPath: 'objectID' });
+                store.createIndex('lastAccessed', 'lastAccessed', { unique: false });
+            }
+        };
+    });
+}
+
+// Get cached thumbnail
+async function getCachedThumbnail(objectID) {
+    // Check memory cache first
+    if (thumbnailCache.has(objectID)) {
+        return thumbnailCache.get(objectID);
+    }
+    
+    try {
+        const db = await initThumbnailCache();
+        const transaction = db.transaction(['thumbnails'], 'readonly');
+        const store = transaction.objectStore('thumbnails');
+        const request = store.get(objectID);
+        
+        return new Promise((resolve) => {
+            request.onsuccess = () => {
+                const result = request.result;
+                if (result && result.thumbnail) {
+                    // Update memory cache
+                    thumbnailCache.set(objectID, result.thumbnail);
+                    
+                    // Update last accessed time
+                    updateThumbnailAccess(objectID);
+                    
+                    resolve(result.thumbnail);
+                } else {
+                    resolve(null);
+                }
+            };
+            request.onerror = () => resolve(null);
+        });
+    } catch (error) {
+        window.MetLogger?.error('Error getting cached thumbnail:', error);
+        return null;
+    }
+}
+
+// Save thumbnail to cache
+async function saveThumbnailToCache(objectID, thumbnail) {
+    // Save to memory cache
+    thumbnailCache.set(objectID, thumbnail);
+    
+    // Limit memory cache size
+    if (thumbnailCache.size > 50) {
+        const firstKey = thumbnailCache.keys().next().value;
+        thumbnailCache.delete(firstKey);
+    }
+    
+    try {
+        const db = await initThumbnailCache();
+        const transaction = db.transaction(['thumbnails'], 'readwrite');
+        const store = transaction.objectStore('thumbnails');
+        
+        store.put({
+            objectID: objectID,
+            thumbnail: thumbnail,
+            lastAccessed: Date.now()
+        });
+        
+        // Clean up old thumbnails if needed
+        cleanupOldThumbnails(db);
+    } catch (error) {
+        window.MetLogger?.error('Error saving thumbnail to cache:', error);
+    }
+}
+
+// Update thumbnail access time
+async function updateThumbnailAccess(objectID) {
+    try {
+        const db = await initThumbnailCache();
+        const transaction = db.transaction(['thumbnails'], 'readwrite');
+        const store = transaction.objectStore('thumbnails');
+        const request = store.get(objectID);
+        
+        request.onsuccess = () => {
+            const data = request.result;
+            if (data) {
+                data.lastAccessed = Date.now();
+                store.put(data);
+            }
+        };
+    } catch (error) {
+        window.MetLogger?.error('Error updating thumbnail access:', error);
+    }
+}
+
+// Clean up old thumbnails
+async function cleanupOldThumbnails(db) {
+    const transaction = db.transaction(['thumbnails'], 'readwrite');
+    const store = transaction.objectStore('thumbnails');
+    const index = store.index('lastAccessed');
+    const countRequest = store.count();
+    
+    countRequest.onsuccess = () => {
+        const count = countRequest.result;
+        if (count > 200) { // Keep max 200 thumbnails
+            const deleteCount = count - 150; // Delete down to 150
+            const cursor = index.openCursor();
+            let deleted = 0;
+            
+            cursor.onsuccess = (event) => {
+                const cursor = event.target.result;
+                if (cursor && deleted < deleteCount) {
+                    store.delete(cursor.primaryKey);
+                    deleted++;
+                    cursor.continue();
+                }
+            };
+        }
+    };
+}
+
+// Create thumbnail from image URL with caching
+async function createThumbnail(imageUrl, objectID) {
+    // Check cache first
+    if (objectID) {
+        const cached = await getCachedThumbnail(objectID);
+        if (cached) {
+            window.MetLogger?.log(`Using cached thumbnail for ${objectID}`);
+            return cached;
+        }
+    }
+    
     return new Promise((resolve) => {
         const img = new Image();
         img.crossOrigin = 'anonymous';
@@ -129,7 +278,14 @@ async function createThumbnail(imageUrl) {
                 
                 // Use webp if supported, fallback to jpeg
                 const dataUrl = canvas.toDataURL('image/webp', 0.85);
-                resolve(dataUrl.includes('data:image/webp') ? dataUrl : canvas.toDataURL('image/jpeg', 0.85));
+                const thumbnail = dataUrl.includes('data:image/webp') ? dataUrl : canvas.toDataURL('image/jpeg', 0.85);
+                
+                // Cache the thumbnail
+                if (objectID) {
+                    saveThumbnailToCache(objectID, thumbnail);
+                }
+                
+                resolve(thumbnail);
             } catch (error) {
                 window.MetLogger?.error('Error creating thumbnail:', error);
                 resolve(null);
@@ -172,7 +328,7 @@ async function addToFavorites(artwork) {
             const imageUrl = window.MetAPI && window.MetAPI.loadArtworkImage 
                 ? window.MetAPI.loadArtworkImage(artwork.primaryImageSmall)
                 : artwork.primaryImageSmall;
-            thumbnail = await createThumbnail(imageUrl);
+            thumbnail = await createThumbnail(imageUrl, artwork.objectID);
         }
         
         // Prepare favorite object

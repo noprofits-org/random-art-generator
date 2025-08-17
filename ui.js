@@ -122,26 +122,73 @@
                     </div>
                 `;
             } else {
-                // Display favorites
-                grid.innerHTML = favorites.map(fav => `
-                    <div class="favorite-item" data-object-id="${fav.objectID}">
-                        ${fav.thumbnail ? 
-                            `<img src="${fav.thumbnail}" alt="${fav.title}" class="favorite-item-image">` :
-                            `<div class="favorite-item-placeholder"><i class="fas fa-image"></i></div>`
-                        }
+                // Create skeleton loaders first
+                grid.innerHTML = favorites.map(() => `
+                    <div class="favorite-item skeleton-loader">
+                        <div class="skeleton-image"></div>
                         <div class="favorite-item-info">
-                            <div class="favorite-item-title">${fav.title || 'Untitled'}</div>
-                            <div class="favorite-item-artist">${fav.artistDisplayName || 'Unknown Artist'}</div>
+                            <div class="skeleton-text skeleton-title"></div>
+                            <div class="skeleton-text skeleton-artist"></div>
                         </div>
                     </div>
                 `).join('');
                 
-                // Add click handlers
-                grid.querySelectorAll('.favorite-item').forEach(item => {
-                    item.addEventListener('click', async () => {
-                        const objectId = item.dataset.objectId;
-                        await displayFavoriteFromModal(objectId);
+                // Set up intersection observer for lazy loading
+                const imageObserver = new IntersectionObserver((entries) => {
+                    entries.forEach(entry => {
+                        if (entry.isIntersecting) {
+                            const item = entry.target;
+                            const index = parseInt(item.dataset.index);
+                            const fav = favorites[index];
+                            
+                            // Replace skeleton with actual content
+                            item.classList.remove('skeleton-loader');
+                            item.innerHTML = `
+                                ${fav.thumbnail ? 
+                                    `<img src="${fav.thumbnail}" alt="${fav.title}" class="favorite-item-image lazy-load" data-loaded="false">` :
+                                    `<div class="favorite-item-placeholder"><i class="fas fa-image"></i></div>`
+                                }
+                                <div class="favorite-item-info">
+                                    <div class="favorite-item-title">${fav.title || 'Untitled'}</div>
+                                    <div class="favorite-item-artist">${fav.artistDisplayName || 'Unknown Artist'}</div>
+                                </div>
+                            `;
+                            
+                            // Handle image loading with fade-in effect
+                            const img = item.querySelector('.favorite-item-image');
+                            if (img) {
+                                img.onload = () => {
+                                    img.classList.add('loaded');
+                                    img.dataset.loaded = 'true';
+                                };
+                                
+                                // If image fails, show placeholder
+                                img.onerror = () => {
+                                    const placeholder = document.createElement('div');
+                                    placeholder.className = 'favorite-item-placeholder';
+                                    placeholder.innerHTML = '<i class="fas fa-image"></i>';
+                                    img.replaceWith(placeholder);
+                                };
+                            }
+                            
+                            // Add click handler
+                            item.addEventListener('click', async () => {
+                                await displayFavoriteFromModal(fav.objectID);
+                            });
+                            
+                            imageObserver.unobserve(item);
+                        }
                     });
+                }, {
+                    rootMargin: '50px',
+                    threshold: 0.01
+                });
+                
+                // Observe all items
+                grid.querySelectorAll('.favorite-item').forEach((item, index) => {
+                    item.dataset.index = index;
+                    item.dataset.objectId = favorites[index].objectID;
+                    imageObserver.observe(item);
                 });
             }
         } catch (error) {

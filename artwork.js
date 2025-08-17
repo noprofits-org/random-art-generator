@@ -1,7 +1,7 @@
 // artwork.js - Functions for displaying artwork
 
 // Display the artwork in the UI
-function displayArtwork(artwork) {
+async function displayArtwork(artwork) {
     if (!artwork) {
         console.error('No artwork data provided');
         return;
@@ -82,24 +82,125 @@ function displayArtwork(artwork) {
         artworkContainer.appendChild(placeholder);
     }
     
-    // Create artwork info content
+    // Check if artwork is favorited
+    let isFavorited = false;
+    if (window.MetFavorites) {
+        try {
+            isFavorited = await window.MetFavorites.isFavorited(artwork.objectID);
+        } catch (error) {
+            console.error('Error checking favorite status:', error);
+        }
+    }
+    
+    // Create artwork info content with favorite button
     const infoHTML = `
-        <h2 class="artwork-title">${artwork.title || 'Untitled'}</h2>
+        <div class="artwork-info-header">
+            <h2 class="artwork-title">${artwork.title || 'Untitled'}</h2>
+            <button class="favorite-button ${isFavorited ? 'favorited' : ''}" 
+                    id="favoriteBtn" 
+                    data-object-id="${artwork.objectID}"
+                    title="${isFavorited ? 'Remove from favorites' : 'Add to favorites'}">
+                <i class="fas fa-heart"></i>
+                <span class="favorite-button-text">${isFavorited ? 'Favorited' : 'Favorite'}</span>
+            </button>
+        </div>
         ${artwork.artistDisplayName ? `<p class="artwork-artist">${artwork.artistDisplayName}</p>` : ''}
         ${artwork.objectDate ? `<p class="artwork-date">${artwork.objectDate}</p>` : ''}
         ${artwork.medium ? `<p class="artwork-medium">${artwork.medium}</p>` : ''}
+        ${artwork.dimensions ? `<p class="artwork-dimensions">${artwork.dimensions}</p>` : ''}
         ${artwork.department ? `<p class="artwork-department">${artwork.department}</p>` : ''}
+        ${artwork.creditLine ? `<p class="artwork-credit">${artwork.creditLine}</p>` : ''}
         <p class="artwork-link"><a href="${artwork.objectURL}" target="_blank">View on The Met website</a></p>
     `;
     
     // Add info to container
     artworkInfo.innerHTML = infoHTML;
     
+    // Add favorite button functionality
+    const favoriteBtn = document.getElementById('favoriteBtn');
+    if (favoriteBtn && window.MetFavorites) {
+        favoriteBtn.addEventListener('click', async () => {
+            try {
+                // Disable button during operation
+                favoriteBtn.disabled = true;
+                
+                // Toggle favorite status
+                const newStatus = await window.MetFavorites.toggleFavorite(artwork);
+                
+                // Update button appearance
+                if (newStatus) {
+                    favoriteBtn.classList.add('favorited');
+                    favoriteBtn.title = 'Remove from favorites';
+                    favoriteBtn.querySelector('.favorite-button-text').textContent = 'Favorited';
+                    
+                    // Add animation
+                    favoriteBtn.classList.add('favorite-animation');
+                    setTimeout(() => {
+                        favoriteBtn.classList.remove('favorite-animation');
+                    }, 600);
+                    
+                    // Show success message
+                    if (window.MetUI && window.MetUI.updateStatus) {
+                        window.MetUI.updateStatus('Added to favorites', 'success');
+                    }
+                } else {
+                    favoriteBtn.classList.remove('favorited');
+                    favoriteBtn.title = 'Add to favorites';
+                    favoriteBtn.querySelector('.favorite-button-text').textContent = 'Favorite';
+                    
+                    // Show removal message
+                    if (window.MetUI && window.MetUI.updateStatus) {
+                        window.MetUI.updateStatus('Removed from favorites', 'info');
+                    }
+                }
+                
+                // Re-enable button
+                favoriteBtn.disabled = false;
+            } catch (error) {
+                console.error('Error toggling favorite:', error);
+                favoriteBtn.disabled = false;
+                
+                if (window.MetUI && window.MetUI.updateStatus) {
+                    window.MetUI.updateStatus('Error updating favorites', 'error');
+                }
+            }
+        });
+    }
+    
     // Log the displayed artwork
     console.log('Displayed artwork:', artwork);
 }
 
+// Display favorite artwork from stored data
+function displayFavoriteArtwork(favorite) {
+    // Convert favorite data back to artwork format
+    const artwork = {
+        objectID: favorite.objectID,
+        title: favorite.title,
+        artistDisplayName: favorite.artistDisplayName,
+        objectDate: favorite.objectDate,
+        department: favorite.department,
+        medium: favorite.medium,
+        primaryImage: favorite.primaryImage,
+        primaryImageSmall: favorite.primaryImageSmall,
+        objectURL: favorite.objectURL,
+        dimensions: favorite.dimensions,
+        creditLine: favorite.creditLine,
+        artistNationality: favorite.artistNationality,
+        artistBeginDate: favorite.artistBeginDate,
+        artistEndDate: favorite.artistEndDate,
+        objectBeginDate: favorite.objectBeginDate,
+        objectEndDate: favorite.objectEndDate,
+        repository: favorite.repository,
+        isHighlight: favorite.isHighlight,
+        isPublicDomain: favorite.isPublicDomain
+    };
+    
+    displayArtwork(artwork);
+}
+
 // Make functions available globally
 window.MetArtwork = {
-    displayArtwork
+    displayArtwork,
+    displayFavoriteArtwork
 };

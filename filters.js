@@ -1,9 +1,13 @@
 // filters.js - Functions related to handling artwork filters
 
+// Debounce timer for search input
+let searchDebounceTimer = null;
+
 // Initialize the filters with appropriate ranges
 async function initFilters() {
     await populateDepartmentDropdown();
     setupDateFilters();
+    setupTextSearch();
     
     // More filter initialization can go here as we add new features
 }
@@ -74,12 +78,62 @@ function validateDateRange(beginInput, endInput) {
     }
 }
 
+// Set up text search functionality with debouncing
+function setupTextSearch() {
+    const searchInput = document.getElementById('searchInput');
+    const clearSearchButton = document.getElementById('clearSearchButton');
+    
+    if (!searchInput) {
+        console.error('Search input element not found');
+        return;
+    }
+    
+    // Add debounced input handler
+    searchInput.addEventListener('input', (e) => {
+        const value = e.target.value.trim();
+        
+        // Show/hide clear button based on input
+        if (clearSearchButton) {
+            clearSearchButton.style.display = value ? 'block' : 'none';
+        }
+        
+        // Clear existing timer
+        if (searchDebounceTimer) {
+            clearTimeout(searchDebounceTimer);
+        }
+        
+        // Set new timer for 500ms
+        searchDebounceTimer = setTimeout(() => {
+            if (value) {
+                console.log('Search query:', value);
+                // Trigger search through UI
+                if (window.UI && window.UI.triggerSearch) {
+                    window.UI.triggerSearch(value);
+                }
+            }
+        }, 500);
+    });
+    
+    // Add clear button handler
+    if (clearSearchButton) {
+        clearSearchButton.addEventListener('click', () => {
+            searchInput.value = '';
+            clearSearchButton.style.display = 'none';
+            // Clear search results
+            if (window.UI && window.UI.clearSearch) {
+                window.UI.clearSearch();
+            }
+        });
+    }
+}
+
 // Get the current filters from the UI
 function getCurrentFilters() {
     const departmentId = document.getElementById('departmentSelect')?.value || '';
     const dateBegin = document.getElementById('dateBegin')?.value || '';
     const dateEnd = document.getElementById('dateEnd')?.value || '';
     const medium = document.getElementById('mediumSelect')?.value || '';
+    const searchQuery = document.getElementById('searchInput')?.value.trim() || '';
     
     // Build the filters object
     const filters = {};
@@ -88,6 +142,7 @@ function getCurrentFilters() {
     if (dateBegin) filters.dateBegin = dateBegin;
     if (dateEnd) filters.dateEnd = dateEnd;
     if (medium) filters.medium = medium;
+    if (searchQuery) filters.searchQuery = searchQuery;
     
     return filters;
 }

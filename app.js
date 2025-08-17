@@ -3,6 +3,39 @@
 // Initialize the application
 async function initApp() {
     console.log('Met Art Generator application initialized');
+    
+    // Register service worker for offline functionality
+    if ('serviceWorker' in navigator) {
+        try {
+            const registration = await navigator.serviceWorker.register('/service-worker.js');
+            console.log('[App] Service Worker registered successfully:', registration.scope);
+            
+            // Handle service worker updates
+            registration.addEventListener('updatefound', () => {
+                const newWorker = registration.installing;
+                console.log('[App] Service Worker update found');
+                
+                newWorker.addEventListener('statechange', () => {
+                    if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                        // New service worker installed, show update notification if needed
+                        console.log('[App] New Service Worker installed, update available');
+                        if (window.MetUI && window.MetUI.updateStatus) {
+                            window.MetUI.updateStatus('App update available - refresh to update', 'info');
+                        }
+                    }
+                });
+            });
+        } catch (error) {
+            console.error('[App] Service Worker registration failed:', error);
+        }
+    } else {
+        console.log('[App] Service Workers not supported in this browser');
+    }
+    
+    // Check if app was launched from PWA shortcut
+    const urlParams = new URLSearchParams(window.location.search);
+    const action = urlParams.get('action');
+    const shouldAutoLoad = action === 'random';
 
     // Define the proxy URL
     const PROXY_URL = 'https://cors-proxy-xi-ten.vercel.app/api/proxy';
@@ -115,6 +148,15 @@ async function initApp() {
             randomArtButton.click();
         }
     });
+    
+    // If launched from PWA shortcut with action=random, automatically load artwork
+    if (shouldAutoLoad && randomArtButton) {
+        console.log('[App] Auto-loading random artwork from PWA shortcut');
+        // Wait a bit for everything to initialize
+        setTimeout(() => {
+            randomArtButton.click();
+        }, 1000);
+    }
 }
 
 // Initialize the app when DOM is fully loaded

@@ -164,10 +164,19 @@ async function getRandomObjectIds(count = 20) {
     }
 }
 
+// Cache for search results
+const searchCache = new Map();
+const SEARCH_CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+
 // Get a list of object IDs that match the filters
 async function searchObjects(filters = {}) {
     // If the search endpoint has been failing, use the alternative approach
     try {
+        // Check if this is a text search
+        if (filters.searchQuery) {
+            return await searchArtworks(filters);
+        }
+        
         // First try using specific department objects (smaller request)
         if (filters.departmentId) {
             console.log(`Fetching objects from department ${filters.departmentId}`);
@@ -220,6 +229,93 @@ async function searchObjects(filters = {}) {
         // Fallback to random objects
         return await getRandomObjectIds(20);
     }
+}
+
+// Search artworks by text query
+async function searchArtworks(filters = {}) {
+    const { searchQuery, departmentId, dateBegin, dateEnd, medium } = filters;
+    
+    if (!searchQuery) {
+        console.warn('searchArtworks called without a search query');
+        return [];
+    }
+    
+    // Create a cache key based on all filters
+    const cacheKey = JSON.stringify(filters);
+    
+    // Check cache first
+    const cached = searchCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < SEARCH_CACHE_DURATION) {
+        console.log('Returning cached search results');
+        return cached.objectIDs;
+    }
+    
+    try {
+        // Build the search query
+        let queryParams = `q=${encodeURIComponent(searchQuery)}&hasImages=true`;
+        
+        // Add additional filters
+        if (departmentId) {
+            queryParams += `&departmentIds=${departmentId}`;
+        }
+        
+        if (dateBegin && dateEnd) {
+            queryParams += `&dateBegin=${dateBegin}&dateEnd=${dateEnd}`;
+        }
+        
+        if (medium) {
+            queryParams += `&medium=${encodeURIComponent(medium)}`;
+        }
+        
+        console.log(`Searching artworks with query: ${queryParams}`);
+        
+        // Make the API request
+        const data = await fetchWithProxy(`/search?${queryParams}`);
+        
+        if (!data || !data.objectIDs) {
+            console.log('No results found for search query');
+            return [];
+        }
+        
+        console.log(`Found ${data.total || data.objectIDs.length} artworks matching search`);
+        
+        // Cache the results
+        searchCache.set(cacheKey, {
+            objectIDs: data.objectIDs,
+            timestamp: Date.now(),
+            total: data.total
+        });
+        
+        return data.objectIDs;
+    } catch (error) {
+        console.error('Error searching artworks:', error);
+        return [];
+    }
+}
+
+// Get multiple object details in batches
+async function getObjectDetailsMultiple(objectIds, batchSize = 10) {
+    const results = [];
+    
+    for (let i = 0; i < objectIds.length; i += batchSize) {
+        const batch = objectIds.slice(i, i + batchSize);
+        const batchPromises = batch.map(id => getObjectDetails(id));
+        
+        try {
+            const batchResults = await Promise.all(batchPromises);
+            results.push(...batchResults.filter(result => result !== null));
+        } catch (error) {
+            console.error('Error fetching batch:', error);
+        }
+    }
+    
+    return results;
+}
+
+// Clear search cache
+function clearSearchCache() {
+    searchCache.clear();
+    console.log('Search cache cleared');
 }
 
 // Get details for a specific object by ID
@@ -321,13 +417,93 @@ function loadArtworkImage(imageUrl) {
     return getProxiedUrl(imageUrl);
 }
 
+// Get cached artworks from service worker
+async function getCachedArtworks() {
+    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+        return new Promise((resolve) => {
+            const messageChannel = new MessageChannel();
+            
+            navigator.serviceWorker.controller.postMessage(
+                { type: 'GET_CACHED_ARTWORKS' }, 
+                [messageChannel.port2]
+            );
+            
+            messageChannel.port1.onmessage = (event) => {
+                resolve(event.data || []);
+            };
+            
+            // Timeout fallback
+            setTimeout(() => {
+                resolve([]);
+            }, 2000);
+        });
+    }
+    return [];
+}
+
+// Check if we have cached artworks
+async function hasCachedArtworks() {
+    const cached = await getCachedArtworks();
+    return cached.length > 0;
+}
+
+// Get random cached artwork when offline
+async function getRandomCachedArtwork() {
+    try {
+        const cachedArtworks = await getCachedArtworks();
+        
+        if (cachedArtworks.length === 0) {
+            console.log('No cached artworks available');
+            return null;
+        }
+        
+        // Select a random artwork from the cache
+        const randomIndex = Math.floor(Math.random() * cachedArtworks.length);
+        const artwork = cachedArtworks[randomIndex];
+        
+        console.log(`Selected random cached artwork: ${artwork.title}`);
+        return artwork;
+    } catch (error) {
+        console.error('Error getting random cached artwork:', error);
+        return null;
+    }
+}
+
+// Enhanced version of getRandomArtwork with offline fallback
+async function getRandomArtworkEnhanced(filters = {}) {
+    // Check if we're online
+    if (!navigator.onLine) {
+        console.log('Offline - attempting to load cached artwork');
+        window.MetUI.updateLoadingMessage('Loading from offline collection...');
+        
+        const cachedArtwork = await getRandomCachedArtwork();
+        if (cachedArtwork) {
+            window.MetUI.hideLoading();
+            return cachedArtwork;
+        } else {
+            window.MetUI.hideLoading();
+            window.MetUI.showError('No cached artworks available. Connect to the internet to discover new artworks.');
+            return null;
+        }
+    }
+    
+    // Online - use the existing function
+    return getRandomArtworkWithFallback(filters);
+}
+
 // Make functions available globally
 window.MetAPI = {
     testApiConnection,
     getDepartments,
     searchObjects,
+    searchArtworks,
     getObjectDetails,
-    getRandomArtwork: getRandomArtworkWithFallback,
+    getObjectDetailsMultiple,
+    getRandomArtwork: getRandomArtworkEnhanced,
     getProxiedUrl,
-    loadArtworkImage
+    loadArtworkImage,
+    getCachedArtworks,
+    hasCachedArtworks,
+    getRandomCachedArtwork,
+    clearSearchCache
 };

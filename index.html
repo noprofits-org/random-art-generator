@@ -2,10 +2,48 @@
 <html lang="en">
 
 <head>
-    <link rel="icon" href="data:,">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Met Art Generator</title>
+    
+    <!-- PWA Meta Tags -->
+    <meta name="description" content="Discover random artworks from the Metropolitan Museum collection">
+    <meta name="theme-color" content="#0062cc">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="Met Art">
+    
+    <!-- Manifest -->
+    <link rel="manifest" href="/manifest.json">
+    
+    <!-- Icons -->
+    <link rel="icon" type="image/png" sizes="48x48" href="/icons/icon-48x48.png">
+    <link rel="icon" type="image/png" sizes="96x96" href="/icons/icon-96x96.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192x192.png">
+    
+    <!-- Apple Touch Icons -->
+    <link rel="apple-touch-icon" href="/icons/icon-180x180.png">
+    <link rel="apple-touch-icon" sizes="144x144" href="/icons/icon-144x144.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="/icons/icon-180x180.png">
+    <link rel="apple-touch-icon" sizes="192x192" href="/icons/icon-192x192.png">
+    <link rel="apple-touch-icon" sizes="512x512" href="/icons/icon-512x512.png">
+    
+    <!-- iOS Splash Screens (optional but recommended) -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    
+    <!-- Microsoft Tiles -->
+    <meta name="msapplication-TileColor" content="#0062cc">
+    <meta name="msapplication-TileImage" content="/icons/icon-144x144.png">
+    
+    <!-- Open Graph / Social Media -->
+    <meta property="og:title" content="Met Art Generator">
+    <meta property="og:description" content="Discover random artworks from the Metropolitan Museum collection">
+    <meta property="og:type" content="website">
+    <meta property="og:image" content="/icons/icon-512x512.png">
+    
+    <!-- Styles -->
     <link rel="stylesheet" href="styles.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
@@ -21,6 +59,30 @@
                 </button>
             </div>
             <div class="drawer-content">
+                <div class="control-group">
+                    <h3>Search</h3>
+                    <div class="search-container">
+                        <div class="search-input-wrapper">
+                            <input type="text" id="searchInput" placeholder="Search by artist, title, or description..." class="search-input">
+                            <button id="clearSearchButton" class="clear-search-button" style="display: none;">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
+                        <div class="search-hint">Search artworks by artist name, title, or keywords</div>
+                    </div>
+                    
+                    <!-- Search History -->
+                    <div class="search-history" id="searchHistory">
+                        <div class="search-history-header">
+                            <div class="search-history-title">Recent Searches</div>
+                            <button class="clear-history-button" id="clearHistoryButton">Clear</button>
+                        </div>
+                        <div class="search-history-items" id="searchHistoryItems">
+                            <!-- Recent searches will be populated here -->
+                        </div>
+                    </div>
+                </div>
+                
                 <div class="control-group">
                     <h3>Filters</h3>
                     <!-- Filters will go here -->
@@ -59,11 +121,38 @@
                 <button class="primary-button" id="randomArtButton">
                     Discover Random Artwork
                 </button>
+                
+                <button class="primary-button view-favorites-button" id="viewFavoritesButton">
+                    <i class="fas fa-heart"></i> View Favorites
+                </button>
             </div>
         </div>
 
         <!-- Main Content Area -->
         <div class="content-area" id="contentArea">
+            <!-- Search Results Container -->
+            <div class="search-results-container" id="searchResultsContainer">
+                <div class="search-results-header">
+                    <div class="search-results-count" id="searchResultsCount"></div>
+                    <button class="close-search-button" id="closeSearchButton">
+                        <i class="fas fa-times"></i> Close Search
+                    </button>
+                </div>
+                <div class="search-results-grid" id="searchResultsGrid">
+                    <!-- Search results will be populated here -->
+                </div>
+                <div class="search-pagination" id="searchPagination">
+                    <button class="pagination-button" id="searchPrevPage">
+                        <i class="fas fa-chevron-left"></i> Previous
+                    </button>
+                    <div class="pagination-info" id="searchPageInfo">Page 1 of 1</div>
+                    <button class="pagination-button" id="searchNextPage">
+                        Next <i class="fas fa-chevron-right"></i>
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Artwork Display Container -->
             <div class="artwork-container" id="artworkContainer">
                 <!-- Artwork will be displayed here -->
                 <div class="artwork-placeholder">
@@ -78,13 +167,38 @@
         </div>
     </div>
 
+    <!-- Favorites Modal -->
+    <div class="favorites-modal" id="favoritesModal">
+        <div class="favorites-modal-content">
+            <div class="favorites-modal-header">
+                <h2>Your Favorite Artworks</h2>
+                <button class="close-modal" id="closeFavoritesModal">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="favorites-modal-body">
+                <div class="favorites-controls">
+                    <span class="favorites-count" id="favoritesCount">0 favorites</span>
+                    <button class="clear-favorites-button" id="clearFavoritesButton">
+                        <i class="fas fa-trash"></i> Clear All
+                    </button>
+                </div>
+                <div class="favorites-grid" id="favoritesGrid">
+                    <!-- Favorites will be populated here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Scripts - Make sure these paths match your project structure -->
     <script src="config.js"></script>
     <script src="utils.js"></script>
     <script src="api.js"></script>
+    <script src="favorites.js"></script>
     <script src="artwork.js"></script>
     <script src="ui.js"></script>
     <script src="filters.js"></script>
+    <script src="search-results.js"></script>
     <script src="app.js"></script>
 </body>
 

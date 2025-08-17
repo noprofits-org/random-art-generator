@@ -25,9 +25,51 @@ body {
 /* Layout */
 .app-container {
     display: flex;
+    flex-direction: column;
     height: 100vh;
     width: 100vw;
     overflow: hidden;
+}
+
+/* SIMPLIFIED: New simplified controls styles */
+.simplified-controls {
+    background-color: var(--secondary-color);
+    border-bottom: 1px solid var(--border-color);
+    padding: 1.5rem;
+    text-align: center;
+}
+
+.app-title {
+    font-size: 2rem;
+    margin-bottom: 1.5rem;
+    color: var(--primary-color);
+}
+
+.control-buttons {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+@media (max-width: 768px) {
+    .app-title {
+        font-size: 1.5rem;
+        margin-bottom: 1rem;
+    }
+    
+    .simplified-controls {
+        padding: 1rem;
+    }
+    
+    .control-buttons {
+        flex-direction: column;
+        width: 100%;
+    }
+    
+    .control-buttons button {
+        width: 100%;
+    }
 }
 
 /* Side Drawer */

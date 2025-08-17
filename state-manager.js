@@ -221,21 +221,32 @@ class StateManager {
     batchUpdate(updates) {
         const changes = [];
         
-        // Apply all updates
+        // FIXED: Create a deep clone of state to maintain immutability
+        const newState = this.deepClone(this.state);
+        
+        // Apply all updates to the cloned state
         for (const [path, value] of Object.entries(updates)) {
             const keys = path.split('.');
-            let target = this.state;
+            let target = newState;
             
+            // Navigate to the parent of the target property
             for (let i = 0; i < keys.length - 1; i++) {
-                target = target[keys[i]];
+                const key = keys[i];
+                if (!(key in target)) {
+                    target[key] = {};
+                }
+                target = target[key];
             }
             
             const lastKey = keys[keys.length - 1];
-            const oldValue = target[lastKey];
+            const oldValue = this.getState(path);  // Get old value from current state
             target[lastKey] = value;
             
             changes.push({ path, oldValue, newValue: value });
         }
+        
+        // Update the state with the new immutable state
+        this.state = newState;
         
         // Notify all subscribers
         changes.forEach(({ path, newValue, oldValue }) => {

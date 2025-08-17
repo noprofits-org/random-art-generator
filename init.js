@@ -268,8 +268,9 @@ const MetInit = (() => {
     async function handleRandomArtwork() {
         console.log('[Init] Random artwork button clicked');
 
-        const filters = window.MetFilters ? window.MetFilters.getCurrentFilters() : {};
-        console.log('[Init] Current filters:', filters);
+        // REMOVED: Filter functionality
+        // const filters = window.MetFilters ? window.MetFilters.getCurrentFilters() : {};
+        // console.log('[Init] Current filters:', filters);
 
         if (window.MetAPI) {
             if (window.MetUI && window.MetUI.showLoading) {
@@ -280,7 +281,8 @@ const MetInit = (() => {
 
             setTimeout(async () => {
                 try {
-                    const artwork = await window.MetAPI.getRandomArtwork(filters);
+                    // SIMPLIFIED: No filters passed
+                    const artwork = await window.MetAPI.getRandomArtwork({});
 
                     if (artwork && window.MetArtwork) {
                         window.MetArtwork.displayArtwork(artwork);

@@ -1,3 +1,5 @@
+// REMOVED: Search functionality - This entire file is commented out
+/*
 // search-results.js - Handle search results display and interactions
 
 // FIXED: Use StateManager for search state
@@ -586,3 +588,4 @@ window.MetSearch = {
     clearSearchHistory,
     viewArtworkFromSearch
 };
+*/

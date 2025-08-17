@@ -556,8 +556,8 @@ function showError(message) {
     retryButton.className = 'retry-button';
     retryButton.textContent = 'Try Again';
     retryButton.addEventListener('click', () => {
-        // Get current filters and try again
-        const filters = window.MetFilters ? window.MetFilters.getCurrentFilters() : {};
+        // REMOVED: Filter functionality - retry without filters
+        // const filters = window.MetFilters ? window.MetFilters.getCurrentFilters() : {};
         
         if (window.MetAPI) {
             // Clear error message
@@ -572,9 +572,9 @@ function showError(message) {
             `;
             artworkContainer.appendChild(placeholder);
             
-            // Get random artwork with the selected filters
+            // Get random artwork without filters
             setTimeout(async () => {
-                const artwork = await window.MetAPI.getRandomArtwork(filters);
+                const artwork = await window.MetAPI.getRandomArtwork({});
                 
                 // Display the artwork if we got one
                 if (artwork && window.MetArtwork) {
@@ -605,6 +605,8 @@ function showError(message) {
             
             // Get random artwork without filters
             setTimeout(async () => {
+                // REMOVED: Filter reset code - no longer needed
+                /*
                 // Reset department dropdown to "Any Department"
                 const departmentSelect = document.getElementById('departmentSelect');
                 if (departmentSelect) {
@@ -622,6 +624,7 @@ function showError(message) {
                 if (mediumSelect) {
                     mediumSelect.value = '';
                 }
+                */
                 
                 // Get random artwork with no filters
                 const artwork = await window.MetAPI.getRandomArtwork({});
@@ -1082,7 +1085,8 @@ async function clearAllFavorites() {
 // FIXED: Removed DOMContentLoaded listener - initialization now handled by init.js
 // The init.js module will call these functions in the proper order
 
-// Search mode functions
+// REMOVED: Search mode functions
+/*
 function showSearchMode(show = true) {
     const searchResultsContainer = document.getElementById('searchResultsContainer');
     const artworkContainer = document.getElementById('artworkContainer');
@@ -1100,8 +1104,10 @@ function showSearchMode(show = true) {
         if (artworkInfo) artworkInfo.style.display = 'block';
     }
 }
+*/
 
-// Trigger search from UI
+// REMOVED: Search trigger function
+/*
 function triggerSearch(query, searchType = 'quick') {
     if (!query || !window.MetSearch) return;
     
@@ -1122,8 +1128,10 @@ function triggerSearch(query, searchType = 'quick') {
     // Perform search with type
     window.MetSearch.performSearch(query, filters, searchType);
 }
+*/
 
-// Clear search from UI
+// REMOVED: Clear search function
+/*
 function clearSearch() {
     const searchInput = document.getElementById('searchInput');
     if (searchInput) searchInput.value = '';
@@ -1134,8 +1142,10 @@ function clearSearch() {
         window.MetSearch.clearSearch();
     }
 }
+*/
 
-// Show search loading state
+// REMOVED: Search loading state
+/*
 function showSearchLoading() {
     const searchResultsGrid = document.getElementById('searchResultsGrid');
     if (searchResultsGrid) {
@@ -1143,8 +1153,10 @@ function showSearchLoading() {
     }
     updateStatus('Searching...', 'loading');
 }
+*/
 
-// Show search results
+// REMOVED: Show search results
+/*
 function showSearchResults(count, query) {
     const searchResultsCount = document.getElementById('searchResultsCount');
     if (searchResultsCount) {
@@ -1154,8 +1166,10 @@ function showSearchResults(count, query) {
     }
     updateStatus(`Found ${count} results`, 'success');
 }
+*/
 
-// Show empty search state
+// REMOVED: Empty search state
+/*
 function showSearchEmpty(query) {
     const searchResultsGrid = document.getElementById('searchResultsGrid');
     if (searchResultsGrid) {
@@ -1175,6 +1189,7 @@ function showSearchEmpty(query) {
     
     updateStatus('No results found', 'info');
 }
+*/
 
 // Show search error
 function showSearchError() {
@@ -1190,7 +1205,8 @@ function showSearchError() {
     updateStatus('Search error', 'error');
 }
 
-// Initialize search UI events
+// REMOVED: Search UI initialization
+/*
 function initSearchUI() {
     // Close search button
     const closeSearchButton = document.getElementById('closeSearchButton');
@@ -1216,6 +1232,7 @@ function initSearchUI() {
         window.MetSearch.displaySearchHistory();
     }
 }
+*/
 
 // Make functions available globally
 window.MetUI = {
@@ -1226,18 +1243,19 @@ window.MetUI = {
     updateStatus,
     showConnectionStatus,
     showFavoritesModal,
-    hideFavoritesModal,
-    showSearchMode,
-    triggerSearch,
-    clearSearch,
-    showSearchLoading,
-    showSearchResults,
-    showSearchEmpty,
-    showSearchError
+    hideFavoritesModal
+    // REMOVED: Search functions
+    // showSearchMode,
+    // triggerSearch,
+    // clearSearch,
+    // showSearchLoading,
+    // showSearchResults,
+    // showSearchEmpty,
+    // showSearchError
 };
 
 // FIXED: Also expose initialization functions globally for init.js
 window.initUI = initUI;
 window.initOfflineDetection = initOfflineDetection;
 window.initFavoritesView = initFavoritesView;
-window.initSearchUI = initSearchUI;
+// REMOVED: window.initSearchUI = initSearchUI;

@@ -50,149 +50,18 @@
 
 <body>
     <div class="app-container">
-        <!-- Mobile Menu Button -->
-        <button class="mobile-menu-button" id="mobileMenuButton">
-            <i class="fas fa-bars"></i>
-            <span>Filters & Search</span>
-        </button>
-        
-        <!-- Mobile Overlay -->
+        <!-- REMOVED: Mobile Menu and Drawer - replaced with simpler controls
+        <button class="mobile-menu-button" id="mobileMenuButton">...</button>
         <div class="mobile-overlay" id="mobileOverlay"></div>
+        <div class="controls-drawer" id="controlsDrawer">...</div>
+        -->
         
-        <!-- Side Drawer for Controls -->
-        <div class="controls-drawer" id="controlsDrawer">
-            <div class="drawer-header">
-                <h2>Random Art Generator</h2>
-                <button class="toggle-drawer desktop-only" id="toggleDrawer">
-                    <i class="fas fa-chevron-left"></i>
-                </button>
-                <button class="close-drawer mobile-only" id="closeDrawer">
-                    <i class="fas fa-times"></i>
-                </button>
-            </div>
-            
-            <!-- Mobile drawer handle -->
-            <div class="mobile-drawer-handle mobile-only">
-                <span></span>
-            </div>
-            <div class="drawer-content">
-                <div class="control-group">
-                    <h3>Search</h3>
-                    
-                    <!-- Simple Search Interface -->
-                    <div class="search-container">
-                        <div class="search-input-wrapper">
-                            <input type="text" id="searchInput" placeholder="Search artworks..." class="search-input">
-                            <button id="searchButton" class="search-button">
-                                <i class="fas fa-search"></i>
-                            </button>
-                        </div>
-                        <div class="search-hint">Enter keywords like "van gogh", "impressionism", or "blue"</div>
-                    </div>
-                    
-                    <!-- Search History -->
-                    <div class="search-history" id="searchHistory">
-                        <div class="search-history-header">
-                            <div class="search-history-title">Recent Searches</div>
-                            <button class="clear-history-button" id="clearHistoryButton">Clear</button>
-                        </div>
-                        <div class="search-history-items" id="searchHistoryItems">
-                            <!-- Recent searches will be populated here -->
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="control-group">
-                    <h3>Filters</h3>
-                    <!-- Filters will go here -->
-                    <div class="filter">
-                        <label for="departmentSelect">Department</label>
-                        <select id="departmentSelect">
-                            <option value="">Any Department</option>
-                            <!-- Departments will be populated from API -->
-                        </select>
-                    </div>
-
-                    <div class="filter">
-                        <label for="dateRange">Date Range</label>
-                        <div class="date-inputs">
-                            <input type="number" id="dateBegin" placeholder="From Year">
-                            <input type="number" id="dateEnd" placeholder="To Year">
-                        </div>
-                        <div class="date-tooltip">
-                            Use negative numbers for BCE/BC (e.g., -800 for 800 BCE)
-                        </div>
-                        
-                        <!-- Predefined Time Period Buttons -->
-                        <div class="time-period-buttons">
-                            <button class="time-period-btn" data-begin="-3000" data-end="-500">Ancient</button>
-                            <button class="time-period-btn" data-begin="500" data-end="1400">Medieval</button>
-                            <button class="time-period-btn" data-begin="1400" data-end="1600">Renaissance</button>
-                            <button class="time-period-btn" data-begin="1600" data-end="1800">Baroque</button>
-                            <button class="time-period-btn" data-begin="1800" data-end="1900">19th Century</button>
-                            <button class="time-period-btn" data-begin="1900" data-end="2025">Modern</button>
-                        </div>
-                    </div>
-
-                    <div class="filter">
-                        <label for="mediumSelect">Medium</label>
-                        <select id="mediumSelect">
-                            <option value="">Any Medium</option>
-                            <option value="Paintings">Paintings</option>
-                            <option value="Sculpture">Sculpture</option>
-                            <option value="Photographs">Photographs</option>
-                            <option value="Ceramics">Ceramics</option>
-                            <option value="Textiles">Textiles</option>
-                        </select>
-                    </div>
-                    
-                    <!-- Advanced Search Toggle -->
-                    <button class="toggle-advanced-search" id="toggleAdvancedSearch">
-                        <i class="fas fa-cog"></i> Advanced Search
-                    </button>
-                    
-                    <div class="advanced-search-fields" id="advancedSearchFields" style="display: none;">
-                        <div class="filter">
-                            <label for="geoLocationInput">Geographic Location</label>
-                            <input type="text" id="geoLocationInput" placeholder="e.g., Europe, Japan">
-                        </div>
-                        
-                        <div class="filter">
-                            <label for="excavationInput">Excavation Site</label>
-                            <input type="text" id="excavationInput" placeholder="e.g., Pompeii">
-                        </div>
-                        
-                        <div class="filter">
-                            <label for="titleInput">Title Search</label>
-                            <input type="text" id="titleInput" placeholder="Search in titles only">
-                        </div>
-                        
-                        <div class="filter checkbox-filter">
-                            <label>
-                                <input type="checkbox" id="artistOrCultureCheckbox">
-                                Search both Artist & Culture
-                            </label>
-                        </div>
-                        
-                        <div class="filter checkbox-filter">
-                            <label>
-                                <input type="checkbox" id="isHighlightCheckbox">
-                                Highlighted Works Only
-                            </label>
-                        </div>
-                        
-                        <div class="filter checkbox-filter">
-                            <label>
-                                <input type="checkbox" id="isPublicDomainCheckbox" checked>
-                                Public Domain Only
-                            </label>
-                        </div>
-                    </div>
-                    
-                </div>
-
+        <!-- Simplified Controls -->
+        <div class="simplified-controls">
+            <h1 class="app-title">Random Art Generator</h1>
+            <div class="control-buttons">
                 <button class="primary-button" id="randomArtButton">
-                    Discover Random Artwork
+                    <i class="fas fa-random"></i> Discover Random Artwork
                 </button>
                 
                 <button class="primary-button view-favorites-button" id="viewFavoritesButton">
@@ -203,27 +72,11 @@
 
         <!-- Main Content Area -->
         <div class="content-area" id="contentArea">
-            <!-- Search Results Container -->
+            <!-- REMOVED: Search Results Container
             <div class="search-results-container" id="searchResultsContainer">
-                <div class="search-results-header">
-                    <div class="search-results-count" id="searchResultsCount"></div>
-                    <button class="close-search-button" id="closeSearchButton">
-                        <i class="fas fa-times"></i> <span class="desktop-only">Close Search</span>
-                    </button>
-                </div>
-                <div class="search-results-grid" id="searchResultsGrid">
-                    <!-- Search results will be populated here -->
-                </div>
-                <div class="search-pagination" id="searchPagination">
-                    <button class="pagination-button" id="searchPrevPage">
-                        <i class="fas fa-chevron-left"></i> <span class="desktop-only">Previous</span>
-                    </button>
-                    <div class="pagination-info" id="searchPageInfo">Page 1 of 1</div>
-                    <button class="pagination-button" id="searchNextPage">
-                        <span class="desktop-only">Next</span> <i class="fas fa-chevron-right"></i>
-                    </button>
-                </div>
+                ...
             </div>
+            -->
             
             <!-- Artwork Display Container -->
             <div class="artwork-container" id="artworkContainer">
@@ -275,8 +128,10 @@
     <script src="./favorites.js"></script>
     <script src="./artwork.js"></script>
     <script src="./ui.js"></script>
+    <!-- REMOVED: Filter and search scripts
     <script src="./filters.js"></script>
     <script src="./search-results.js"></script>
+    -->
     <script src="./init.js"></script>
     <!-- app.js removed - functionality moved to init.js -->
 </body>

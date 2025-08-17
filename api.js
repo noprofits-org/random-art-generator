@@ -643,7 +643,7 @@ async function getObjectDetails(objectId) {
     });
 }
 
-// Function to fetch a random artwork based on filters
+// Function to fetch a random artwork (SIMPLIFIED: filters removed)
 async function getRandomArtwork(filters = {}) {
     try {
         // Show loading state
@@ -655,6 +655,8 @@ async function getRandomArtwork(filters = {}) {
             }
         }
         
+        // REMOVED: Filter functionality - always get random objects
+        /*
         let objectIDs = [];
         
         // Try department-specific search first if department is selected
@@ -672,6 +674,11 @@ async function getRandomArtwork(filters = {}) {
             console.log('No filtered results, using random objects');
             objectIDs = await getRandomObjectIds(50);
         }
+        */
+        
+        // SIMPLIFIED: Always use random objects
+        console.log('Getting random objects from the Met collection');
+        let objectIDs = await getRandomObjectIds(50);
         
         if (!objectIDs || objectIDs.length === 0) {
             // FIXED: Added defensive check for window.MetUI before use

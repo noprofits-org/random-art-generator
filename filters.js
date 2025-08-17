@@ -1,3 +1,5 @@
+// REMOVED: Filter functionality - This entire file is commented out
+/*
 // filters.js - Functions related to handling artwork filters
 
 // Initialize the filters with appropriate ranges
@@ -372,15 +374,8 @@ function connectAdvancedSearchFields() {
         }
     });
     
-    // FIXED: Add debounced event handlers for input fields
-    if (window.MetEventManager) {
-        fields.forEach(fieldId => {
-            const field = document.getElementById(fieldId);
-            if (field && debouncedHandler) {
-                window.MetEventManager.addEventListener(field, 'input', debouncedHandler);
-            }
-        });
-    }
+    // FIXED: Removed duplicate event handler code that used undefined 'fields' variable
+    // Event handlers for advanced text fields are already attached in the loop above
     
     // Checkbox fields that should trigger search immediately
     const checkboxFields = [
@@ -571,3 +566,4 @@ window.MetFilters = {
     updateStateFromFilters,
     subscribeToStateChanges
 };
+*/

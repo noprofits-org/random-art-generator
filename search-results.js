@@ -40,7 +40,7 @@ function setupSearchResultsEvents() {
 
 // Perform a search
 async function performSearch(query, filters = {}, searchType = 'quick') {
-    if (!query || (query === currentSearchQuery && searchType === currentSearchType)) {
+    if (!query || query === currentSearchQuery) {
         return;
     }
     
@@ -52,18 +52,9 @@ async function performSearch(query, filters = {}, searchType = 'quick') {
     window.MetUI.showSearchLoading();
     
     try {
-        let objectIds = [];
-        
-        // Get search results based on type
-        if (searchType === 'artist') {
-            objectIds = await window.MetAPI.searchByArtist(query, filters);
-        } else if (searchType === 'title') {
-            objectIds = await window.MetAPI.searchByTitle(query, filters);
-        } else {
-            // Quick or advanced search
-            const searchFilters = { ...filters, searchQuery: query };
-            objectIds = await window.MetAPI.searchArtworks(searchFilters);
-        }
+        // Simple search - just use the Met's search API
+        const searchFilters = { ...filters, searchQuery: query };
+        const objectIds = await window.MetAPI.searchArtworks(searchFilters);
         
         if (!objectIds || objectIds.length === 0) {
             window.MetUI.showSearchEmpty(query);
@@ -74,34 +65,27 @@ async function performSearch(query, filters = {}, searchType = 'quick') {
         // Limit to first 100 results for performance
         const limitedIds = objectIds.slice(0, 100);
         
-        // Fetch details for the first page immediately with relevance scoring
+        // Fetch details for the first page
         const firstPageIds = limitedIds.slice(0, RESULTS_PER_PAGE);
-        const firstPageDetails = await fetchDetailsWithRelevance(firstPageIds, query, searchType);
+        const firstPageDetails = await window.MetAPI.getObjectDetailsMultiple(firstPageIds);
         
-        // Store all IDs but only the first page of details
+        // Store results in the order the Met API returned them
         currentSearchResults = limitedIds.map((id, index) => {
             if (index < RESULTS_PER_PAGE) {
-                return firstPageDetails.find(detail => detail.objectID === id) || { objectID: id };
+                return firstPageDetails.find(detail => detail && detail.objectID === id) || { objectID: id };
             }
             return { objectID: id };
         });
         
-        // Sort by relevance score
-        currentSearchResults.sort((a, b) => {
-            const scoreA = a.relevanceInfo ? a.relevanceInfo.score : 0;
-            const scoreB = b.relevanceInfo ? b.relevanceInfo.score : 0;
-            return scoreB - scoreA;
-        });
-        
-        // Add search to history with type
-        addToSearchHistory(`${query} (${searchType})`);
+        // Add search to history
+        addToSearchHistory(query);
         
         // Display results
         displaySearchResults();
         
         // Fetch remaining details in the background
         if (limitedIds.length > RESULTS_PER_PAGE) {
-            fetchRemainingDetailsWithRelevance(limitedIds.slice(RESULTS_PER_PAGE), query, searchType);
+            fetchRemainingDetails(limitedIds.slice(RESULTS_PER_PAGE));
         }
     } catch (error) {
         console.error('Search error:', error);
@@ -109,159 +93,9 @@ async function performSearch(query, filters = {}, searchType = 'quick') {
     }
 }
 
-// Fetch details with relevance scoring
-async function fetchDetailsWithRelevance(objectIds, searchQuery, searchType = 'quick') {
-    const details = await window.MetAPI.getObjectDetailsMultiple(objectIds);
-    
-    // Add relevance info to each detail
-    return details.map(artwork => {
-        if (!artwork) return null;
-        const relevanceInfo = calculateRelevance(artwork, searchQuery, searchType);
-        return { ...artwork, relevanceInfo };
-    }).filter(item => item !== null);
-}
+// Removed relevance scoring functions - search results are now displayed in the order returned by Met API
 
-// Calculate relevance score for an artwork
-function calculateRelevance(artwork, searchQuery, searchType = 'quick') {
-    const query = searchQuery.toLowerCase();
-    let score = 0;
-    const matches = [];
-    let searchContext = null;
-    
-    // For artist search, prioritize artist matches
-    if (searchType === 'artist') {
-        if (artwork.artistDisplayName) {
-            const artist = artwork.artistDisplayName.toLowerCase();
-            if (artist === query) {
-                score += 100;
-                matches.push({ field: 'artist', type: 'exact' });
-            } else if (artist.includes(query)) {
-                score += 80;
-                matches.push({ field: 'artist', type: 'partial' });
-            }
-            searchContext = { type: 'artist', field: 'Artist name' };
-        }
-    }
-    // For title search, prioritize title matches
-    else if (searchType === 'title') {
-        if (artwork.title) {
-            const title = artwork.title.toLowerCase();
-            if (title === query) {
-                score += 100;
-                matches.push({ field: 'title', type: 'exact' });
-            } else if (title.includes(query)) {
-                score += 80;
-                matches.push({ field: 'title', type: 'partial' });
-            }
-            searchContext = { type: 'title', field: 'Artwork title' };
-        }
-    }
-    // For quick/advanced search, check all fields
-    else {
-        // Check title (highest priority)
-        if (artwork.title) {
-            const title = artwork.title.toLowerCase();
-            if (title === query) {
-                score += 100;
-                matches.push({ field: 'title', type: 'exact' });
-            } else if (title.includes(query)) {
-                score += 50;
-                matches.push({ field: 'title', type: 'partial' });
-            }
-        }
-        
-        // Check artist name (high priority)
-        if (artwork.artistDisplayName) {
-            const artist = artwork.artistDisplayName.toLowerCase();
-            if (artist === query) {
-                score += 80;
-                matches.push({ field: 'artist', type: 'exact' });
-            } else if (artist.includes(query)) {
-                score += 40;
-                matches.push({ field: 'artist', type: 'partial' });
-            }
-        }
-        
-        // Check classification/medium (medium priority)
-        if (artwork.classification) {
-            const classification = artwork.classification.toLowerCase();
-            if (classification.includes(query)) {
-                score += 20;
-                matches.push({ field: 'classification', type: 'partial' });
-            }
-        }
-        
-        if (artwork.medium) {
-            const medium = artwork.medium.toLowerCase();
-            if (medium.includes(query)) {
-                score += 15;
-                matches.push({ field: 'medium', type: 'partial' });
-            }
-        }
-        
-        // Check department (low priority)
-        if (artwork.department) {
-            const department = artwork.department.toLowerCase();
-            if (department.includes(query)) {
-                score += 10;
-                matches.push({ field: 'department', type: 'partial' });
-            }
-        }
-        
-        // Check culture (low priority)
-        if (artwork.culture) {
-            const culture = artwork.culture.toLowerCase();
-            if (culture.includes(query)) {
-                score += 10;
-                matches.push({ field: 'culture', type: 'partial' });
-            }
-        }
-        
-        // Check tags (lowest priority)
-        if (artwork.tags && Array.isArray(artwork.tags)) {
-            const tagMatch = artwork.tags.some(tag => 
-                tag.term && tag.term.toLowerCase().includes(query)
-            );
-            if (tagMatch) {
-                score += 5;
-                matches.push({ field: 'tags', type: 'partial' });
-            }
-        }
-    }
-    
-    return {
-        score,
-        matches,
-        primaryMatch: matches.length > 0 ? matches[0].field : null,
-        searchContext
-    };
-}
-
-// Fetch remaining details in the background with relevance
-async function fetchRemainingDetailsWithRelevance(remainingIds, searchQuery, searchType = 'quick') {
-    try {
-        const details = await fetchDetailsWithRelevance(remainingIds, searchQuery, searchType);
-        
-        // Update the results array with the fetched details
-        details.forEach(detail => {
-            const index = currentSearchResults.findIndex(r => r.objectID === detail.objectID);
-            if (index !== -1) {
-                currentSearchResults[index] = detail;
-            }
-        });
-        
-        // Re-sort by relevance
-        currentSearchResults.sort((a, b) => {
-            const scoreA = a.relevanceInfo ? a.relevanceInfo.score : 0;
-            const scoreB = b.relevanceInfo ? b.relevanceInfo.score : 0;
-            return scoreB - scoreA;
-        });
-    } catch (error) {
-        console.error('Error fetching remaining details:', error);
-    }
-}
-
-// Original function for backward compatibility
+// Fetch remaining details in the background
 async function fetchRemainingDetails(remainingIds) {
     try {
         const details = await window.MetAPI.getObjectDetailsMultiple(remainingIds);
@@ -334,25 +168,6 @@ function createSearchResultItem(artwork) {
     item.className = 'search-result-item';
     item.dataset.objectId = artwork.objectID;
     
-    // Add relevance indicator if available
-    if (artwork.relevanceInfo && artwork.relevanceInfo.score > 0) {
-        const relevanceIndicator = document.createElement('div');
-        relevanceIndicator.className = 'relevance-indicator';
-        
-        // Add match badge
-        if (artwork.relevanceInfo.primaryMatch || artwork.relevanceInfo.searchContext) {
-            const matchBadge = document.createElement('span');
-            matchBadge.className = 'match-badge';
-            matchBadge.textContent = getMatchLabel(
-                artwork.relevanceInfo.primaryMatch, 
-                artwork.relevanceInfo.searchContext
-            );
-            relevanceIndicator.appendChild(matchBadge);
-        }
-        
-        item.appendChild(relevanceIndicator);
-    }
-    
     // Create image
     const imageDiv = document.createElement('div');
     imageDiv.className = 'search-result-image-container';
@@ -374,40 +189,26 @@ function createSearchResultItem(artwork) {
     const info = document.createElement('div');
     info.className = 'search-result-info';
     
-    // Highlight matching fields
+    // Add title
     const title = document.createElement('div');
     title.className = 'search-result-title';
-    if (artwork.relevanceInfo && artwork.relevanceInfo.matches.some(m => m.field === 'title')) {
-        title.innerHTML = highlightText(artwork.title || 'Untitled', currentSearchQuery);
-    } else {
-        title.textContent = artwork.title || 'Untitled';
-    }
+    title.textContent = artwork.title || 'Untitled';
     info.appendChild(title);
     
+    // Add artist
     if (artwork.artistDisplayName) {
         const artist = document.createElement('div');
         artist.className = 'search-result-artist';
-        if (artwork.relevanceInfo && artwork.relevanceInfo.matches.some(m => m.field === 'artist')) {
-            artist.innerHTML = highlightText(artwork.artistDisplayName, currentSearchQuery);
-        } else {
-            artist.textContent = artwork.artistDisplayName;
-        }
+        artist.textContent = artwork.artistDisplayName;
         info.appendChild(artist);
     }
     
+    // Add date
     if (artwork.objectDate) {
         const date = document.createElement('div');
         date.className = 'search-result-date';
         date.textContent = artwork.objectDate;
         info.appendChild(date);
-    }
-    
-    // Show object type if relevant
-    if (artwork.objectName) {
-        const type = document.createElement('div');
-        type.className = 'search-result-type';
-        type.textContent = artwork.objectName;
-        info.appendChild(type);
     }
     
     item.appendChild(info);
@@ -420,36 +221,6 @@ function createSearchResultItem(artwork) {
     return item;
 }
 
-// Get a friendly label for match field
-function getMatchLabel(field, searchContext) {
-    if (searchContext && searchContext.type) {
-        return `Found in: ${searchContext.field}`;
-    }
-    
-    const labels = {
-        'title': 'Title match',
-        'artist': 'Artist match',
-        'classification': 'Type match',
-        'medium': 'Medium match',
-        'department': 'Department match',
-        'culture': 'Culture match',
-        'tags': 'Tag match'
-    };
-    return labels[field] || 'Match';
-}
-
-// Highlight search term in text
-function highlightText(text, searchTerm) {
-    if (!text || !searchTerm) return text;
-    
-    const regex = new RegExp(`(${escapeRegex(searchTerm)})`, 'gi');
-    return text.replace(regex, '<mark>$1</mark>');
-}
-
-// Escape special regex characters
-function escapeRegex(string) {
-    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
 
 // View an artwork from search results
 async function viewArtworkFromSearch(objectId) {

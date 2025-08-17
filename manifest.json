@@ -2,50 +2,50 @@
   "name": "Met Art Generator",
   "short_name": "Met Art",
   "description": "Discover random artworks from the Metropolitan Museum collection",
-  "start_url": "/",
+  "start_url": "./",
   "display": "standalone",
   "theme_color": "#0062cc",
   "background_color": "#ffffff",
   "orientation": "any",
   "icons": [
     {
-      "src": "/icons/icon-48x48.png",
+      "src": "./icons/icon-48x48.png",
       "sizes": "48x48",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "/icons/icon-72x72.png",
+      "src": "./icons/icon-72x72.png",
       "sizes": "72x72",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "/icons/icon-96x96.png",
+      "src": "./icons/icon-96x96.png",
       "sizes": "96x96",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "/icons/icon-144x144.png",
+      "src": "./icons/icon-144x144.png",
       "sizes": "144x144",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "/icons/icon-180x180.png",
+      "src": "./icons/icon-180x180.png",
       "sizes": "180x180",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "/icons/icon-192x192.png",
+      "src": "./icons/icon-192x192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "/icons/icon-512x512.png",
+      "src": "./icons/icon-512x512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
@@ -56,12 +56,12 @@
       "name": "Random Artwork",
       "short_name": "Random",
       "description": "Get a random artwork from the Met collection",
-      "url": "/?action=random",
-      "icons": [{ "src": "/icons/icon-96x96.png", "sizes": "96x96" }]
+      "url": "./?action=random",
+      "icons": [{ "src": "./icons/icon-96x96.png", "sizes": "96x96" }]
     }
   ],
   "categories": ["art", "culture", "education", "entertainment"],
-  "scope": "/",
+  "scope": "./",
   "lang": "en-US",
   "dir": "ltr"
 }

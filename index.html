@@ -15,19 +15,19 @@
     <meta name="apple-mobile-web-app-title" content="Met Art">
     
     <!-- Manifest -->
-    <link rel="manifest" href="/manifest.json">
+    <link rel="manifest" href="./manifest.json">
     
     <!-- Icons -->
-    <link rel="icon" type="image/png" sizes="48x48" href="/icons/icon-48x48.png">
-    <link rel="icon" type="image/png" sizes="96x96" href="/icons/icon-96x96.png">
-    <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192x192.png">
+    <link rel="icon" type="image/png" sizes="48x48" href="./icons/icon-48x48.png">
+    <link rel="icon" type="image/png" sizes="96x96" href="./icons/icon-96x96.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192x192.png">
     
     <!-- Apple Touch Icons -->
-    <link rel="apple-touch-icon" href="/icons/icon-180x180.png">
-    <link rel="apple-touch-icon" sizes="144x144" href="/icons/icon-144x144.png">
-    <link rel="apple-touch-icon" sizes="180x180" href="/icons/icon-180x180.png">
-    <link rel="apple-touch-icon" sizes="192x192" href="/icons/icon-192x192.png">
-    <link rel="apple-touch-icon" sizes="512x512" href="/icons/icon-512x512.png">
+    <link rel="apple-touch-icon" href="./icons/icon-180x180.png">
+    <link rel="apple-touch-icon" sizes="144x144" href="./icons/icon-144x144.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="./icons/icon-180x180.png">
+    <link rel="apple-touch-icon" sizes="192x192" href="./icons/icon-192x192.png">
+    <link rel="apple-touch-icon" sizes="512x512" href="./icons/icon-512x512.png">
     
     <!-- iOS Splash Screens (optional but recommended) -->
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -35,16 +35,16 @@
     
     <!-- Microsoft Tiles -->
     <meta name="msapplication-TileColor" content="#0062cc">
-    <meta name="msapplication-TileImage" content="/icons/icon-144x144.png">
+    <meta name="msapplication-TileImage" content="./icons/icon-144x144.png">
     
     <!-- Open Graph / Social Media -->
     <meta property="og:title" content="Met Art Generator">
     <meta property="og:description" content="Discover random artworks from the Metropolitan Museum collection">
     <meta property="og:type" content="website">
-    <meta property="og:image" content="/icons/icon-512x512.png">
+    <meta property="og:image" content="./icons/icon-512x512.png">
     
     <!-- Styles -->
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="./styles.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
 
@@ -79,67 +79,15 @@
                 <div class="control-group">
                     <h3>Search</h3>
                     
-                    <!-- Search Tabs -->
-                    <div class="search-tabs">
-                        <button class="search-tab active" data-tab="quick">Quick Search</button>
-                        <button class="search-tab" data-tab="artist">Artist</button>
-                        <button class="search-tab" data-tab="title">Title</button>
-                        <button class="search-tab" data-tab="advanced">Advanced</button>
-                    </div>
-                    
-                    <!-- Quick Search Tab -->
-                    <div class="search-tab-content active" id="quickSearchTab">
-                        <div class="search-container">
-                            <div class="search-input-wrapper">
-                                <input type="text" id="searchInput" placeholder="Search everything..." class="search-input">
-                                <button id="clearSearchButton" class="clear-search-button" style="display: none;">
-                                    <i class="fas fa-times"></i>
-                                </button>
-                            </div>
-                            <div class="search-hint">Search across all fields: artist, title, medium, etc.</div>
+                    <!-- Simple Search Interface -->
+                    <div class="search-container">
+                        <div class="search-input-wrapper">
+                            <input type="text" id="searchInput" placeholder="Search artworks..." class="search-input">
+                            <button id="searchButton" class="search-button">
+                                <i class="fas fa-search"></i>
+                            </button>
                         </div>
-                    </div>
-                    
-                    <!-- Artist Search Tab -->
-                    <div class="search-tab-content" id="artistSearchTab">
-                        <div class="search-container">
-                            <div class="search-input-wrapper">
-                                <input type="text" id="artistSearchInput" placeholder="Search by artist name..." class="search-input" autocomplete="off">
-                                <button id="clearArtistSearchButton" class="clear-search-button" style="display: none;">
-                                    <i class="fas fa-times"></i>
-                                </button>
-                            </div>
-                            <div class="artist-suggestions" id="artistSuggestions" style="display: none;">
-                                <!-- Artist suggestions will appear here -->
-                            </div>
-                            <div class="search-hint">Search for specific artists (e.g., "Monet", "Van Gogh")</div>
-                        </div>
-                    </div>
-                    
-                    <!-- Title Search Tab -->
-                    <div class="search-tab-content" id="titleSearchTab">
-                        <div class="search-container">
-                            <div class="search-input-wrapper">
-                                <input type="text" id="titleSearchInput" placeholder="Search by artwork title..." class="search-input">
-                                <button id="clearTitleSearchButton" class="clear-search-button" style="display: none;">
-                                    <i class="fas fa-times"></i>
-                                </button>
-                            </div>
-                            <div class="search-hint">Search for specific artwork titles</div>
-                        </div>
-                    </div>
-                    
-                    <!-- Advanced Search Tab -->
-                    <div class="search-tab-content" id="advancedSearchTab">
-                        <div class="search-container">
-                            <div class="search-input-wrapper">
-                                <input type="text" id="advancedSearchInput" placeholder="Keywords..." class="search-input">
-                                <button id="clearAdvancedSearchButton" class="clear-search-button" style="display: none;">
-                                    <i class="fas fa-times"></i>
-                                </button>
-                            </div>
-                            <div class="search-hint">Combine with filters below for precise results</div>
-                        </div>
+                        <div class="search-hint">Enter keywords like "van gogh", "impressionism", or "blue"</div>
                     </div>
                     
                     <!-- Search History -->
@@ -188,57 +136,6 @@
                         </select>
                     </div>
                     
-                    <div class="filter">
-                        <label>Object Type Filters</label>
-                        <div class="object-type-filters">
-                            <div class="filter-section">
-                                <div class="filter-section-title">Include Only:</div>
-                                <label class="checkbox-label">
-                                    <input type="checkbox" name="includeType" value="Painting" id="includePaintings">
-                                    <span>Paintings</span>
-                                </label>
-                                <label class="checkbox-label">
-                                    <input type="checkbox" name="includeType" value="Sculpture" id="includeSculpture">
-                                    <span>Sculptures</span>
-                                </label>
-                                <label class="checkbox-label">
-                                    <input type="checkbox" name="includeType" value="Photograph" id="includePhotographs">
-                                    <span>Photographs</span>
-                                </label>
-                                <label class="checkbox-label">
-                                    <input type="checkbox" name="includeType" value="Drawing" id="includeDrawings">
-                                    <span>Drawings</span>
-                                </label>
-                                <label class="checkbox-label">
-                                    <input type="checkbox" name="includeType" value="Print" id="includePrints">
-                                    <span>Prints</span>
-                                </label>
-                            </div>
-                            <div class="filter-section">
-                                <div class="filter-section-title">Exclude:</div>
-                                <label class="checkbox-label">
-                                    <input type="checkbox" name="excludeType" value="Textile" id="excludeTextiles" checked>
-                                    <span>Textiles</span>
-                                </label>
-                                <label class="checkbox-label">
-                                    <input type="checkbox" name="excludeType" value="Fragment" id="excludeFragments" checked>
-                                    <span>Fragments</span>
-                                </label>
-                                <label class="checkbox-label">
-                                    <input type="checkbox" name="excludeType" value="Shard" id="excludeShards" checked>
-                                    <span>Shards</span>
-                                </label>
-                                <label class="checkbox-label">
-                                    <input type="checkbox" name="excludeType" value="Negative" id="excludeNegatives">
-                                    <span>Negatives</span>
-                                </label>
-                                <label class="checkbox-label">
-                                    <input type="checkbox" name="excludeType" value="Mount" id="excludeMounts">
-                                    <span>Mounts</span>
-                                </label>
-                            </div>
-                        </div>
-                    </div>
                 </div>
 
                 <button class="primary-button" id="randomArtButton">
@@ -314,15 +211,15 @@
     </div>
 
     <!-- Scripts - Make sure these paths match your project structure -->
-    <script src="config.js"></script>
-    <script src="utils.js"></script>
-    <script src="api.js"></script>
-    <script src="favorites.js"></script>
-    <script src="artwork.js"></script>
-    <script src="ui.js"></script>
-    <script src="filters.js"></script>
-    <script src="search-results.js"></script>
-    <script src="app.js"></script>
+    <script src="./config.js"></script>
+    <script src="./utils.js"></script>
+    <script src="./api.js"></script>
+    <script src="./favorites.js"></script>
+    <script src="./artwork.js"></script>
+    <script src="./ui.js"></script>
+    <script src="./filters.js"></script>
+    <script src="./search-results.js"></script>
+    <script src="./app.js"></script>
 </body>
 
 </html>

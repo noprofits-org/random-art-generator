@@ -78,164 +78,55 @@ function validateDateRange(beginInput, endInput) {
     }
 }
 
-// Set up text search functionality with debouncing
+// Set up text search functionality
 function setupTextSearch() {
-    setupSearchTabs();
-    setupSearchInput('searchInput', 'clearSearchButton', 'quick');
-    setupSearchInput('artistSearchInput', 'clearArtistSearchButton', 'artist');
-    setupSearchInput('titleSearchInput', 'clearTitleSearchButton', 'title');
-    setupSearchInput('advancedSearchInput', 'clearAdvancedSearchButton', 'advanced');
-    setupArtistSuggestions();
-}
-
-// Set up search tabs
-function setupSearchTabs() {
-    const tabs = document.querySelectorAll('.search-tab');
-    const contents = document.querySelectorAll('.search-tab-content');
+    const searchInput = document.getElementById('searchInput');
+    const searchButton = document.getElementById('searchButton');
     
-    tabs.forEach(tab => {
-        tab.addEventListener('click', () => {
-            const targetTab = tab.dataset.tab;
-            
-            // Update active states
-            tabs.forEach(t => t.classList.remove('active'));
-            contents.forEach(c => c.classList.remove('active'));
-            
-            tab.classList.add('active');
-            document.getElementById(`${targetTab}SearchTab`).classList.add('active');
-            
-            // Focus the appropriate input
-            const inputId = targetTab === 'quick' ? 'searchInput' : `${targetTab}SearchInput`;
-            const input = document.getElementById(inputId);
-            if (input) {
-                input.focus();
-            }
-        });
-    });
-}
-
-// Set up individual search input
-function setupSearchInput(inputId, clearButtonId, searchType) {
-    const searchInput = document.getElementById(inputId);
-    const clearSearchButton = document.getElementById(clearButtonId);
-    
-    if (!searchInput) {
-        console.error(`Search input element ${inputId} not found`);
+    if (!searchInput || !searchButton) {
+        console.error('Search elements not found');
         return;
     }
     
-    // Add debounced input handler
+    // Handle search button click
+    searchButton.addEventListener('click', () => {
+        const value = searchInput.value.trim();
+        if (value) {
+            performSearch(value);
+        }
+    });
+    
+    // Handle Enter key in search input
+    searchInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            const value = searchInput.value.trim();
+            if (value) {
+                performSearch(value);
+            }
+        }
+    });
+    
+    // Handle input changes (for clearing search)
     searchInput.addEventListener('input', (e) => {
         const value = e.target.value.trim();
-        
-        // Show/hide clear button based on input
-        if (clearSearchButton) {
-            clearSearchButton.style.display = value ? 'block' : 'none';
-        }
-        
-        // Clear existing timer
-        if (searchDebounceTimer) {
-            clearTimeout(searchDebounceTimer);
-        }
-        
-        // Set new timer for 500ms
-        searchDebounceTimer = setTimeout(() => {
-            if (value) {
-                console.log(`${searchType} search query:`, value);
-                // Trigger search through UI
-                if (window.UI && window.UI.triggerSearch) {
-                    window.UI.triggerSearch(value, searchType);
-                }
+        if (!value) {
+            // Clear search when input is empty
+            if (window.MetUI && window.MetUI.clearSearch) {
+                window.MetUI.clearSearch();
             }
-        }, 500);
-    });
-    
-    // Add clear button handler
-    if (clearSearchButton) {
-        clearSearchButton.addEventListener('click', () => {
-            searchInput.value = '';
-            clearSearchButton.style.display = 'none';
-            // Clear search results
-            if (window.UI && window.UI.clearSearch) {
-                window.UI.clearSearch();
-            }
-        });
-    }
-}
-
-// Set up artist suggestions
-function setupArtistSuggestions() {
-    const artistInput = document.getElementById('artistSearchInput');
-    const suggestionsDiv = document.getElementById('artistSuggestions');
-    
-    if (!artistInput || !suggestionsDiv) return;
-    
-    let suggestionTimer = null;
-    
-    artistInput.addEventListener('input', (e) => {
-        const value = e.target.value.trim();
-        
-        if (suggestionTimer) {
-            clearTimeout(suggestionTimer);
-        }
-        
-        if (value.length < 2) {
-            suggestionsDiv.style.display = 'none';
-            return;
-        }
-        
-        suggestionTimer = setTimeout(() => {
-            if (window.MetAPI && window.MetAPI.getArtistSuggestions) {
-                window.MetAPI.getArtistSuggestions(value).then(suggestions => {
-                    displayArtistSuggestions(suggestions, suggestionsDiv, artistInput);
-                });
-            }
-        }, 300);
-    });
-    
-    // Hide suggestions when clicking outside
-    document.addEventListener('click', (e) => {
-        if (!artistInput.contains(e.target) && !suggestionsDiv.contains(e.target)) {
-            suggestionsDiv.style.display = 'none';
         }
     });
 }
 
-// Display artist suggestions
-function displayArtistSuggestions(suggestions, suggestionsDiv, input) {
-    if (!suggestions || suggestions.length === 0) {
-        suggestionsDiv.style.display = 'none';
-        return;
+// Perform search
+function performSearch(query) {
+    console.log('Search query:', query);
+    // Trigger search through UI
+    if (window.MetUI && window.MetUI.triggerSearch) {
+        window.MetUI.triggerSearch(query, 'quick');
     }
-    
-    suggestionsDiv.innerHTML = suggestions.map(artist => `
-        <div class="artist-suggestion" data-artist="${artist.name}">
-            <div class="artist-name">${artist.name}</div>
-            ${artist.nationality || artist.dates ? `
-                <div class="artist-info">
-                    ${artist.nationality || ''} ${artist.dates || ''}
-                </div>
-            ` : ''}
-        </div>
-    `).join('');
-    
-    suggestionsDiv.style.display = 'block';
-    
-    // Add click handlers
-    const suggestionItems = suggestionsDiv.querySelectorAll('.artist-suggestion');
-    suggestionItems.forEach(item => {
-        item.addEventListener('click', () => {
-            const artistName = item.dataset.artist;
-            input.value = artistName;
-            suggestionsDiv.style.display = 'none';
-            
-            // Trigger search
-            if (window.UI && window.UI.triggerSearch) {
-                window.UI.triggerSearch(artistName, 'artist');
-            }
-        });
-    });
 }
+
 
 // Get the current filters from the UI
 function getCurrentFilters() {
@@ -245,16 +136,7 @@ function getCurrentFilters() {
     const medium = document.getElementById('mediumSelect')?.value || '';
     const searchQuery = document.getElementById('searchInput')?.value.trim() || '';
     
-    // Get object type filters
-    const includeTypes = [];
-    document.querySelectorAll('input[name="includeType"]:checked').forEach(checkbox => {
-        includeTypes.push(checkbox.value);
-    });
-    
-    const excludeTypes = [];
-    document.querySelectorAll('input[name="excludeType"]:checked').forEach(checkbox => {
-        excludeTypes.push(checkbox.value);
-    });
+    // No more object type filters in simplified interface
     
     // Build the filters object
     const filters = {};
@@ -264,8 +146,6 @@ function getCurrentFilters() {
     if (dateEnd) filters.dateEnd = dateEnd;
     if (medium) filters.medium = medium;
     if (searchQuery) filters.searchQuery = searchQuery;
-    if (includeTypes.length > 0) filters.includeTypes = includeTypes;
-    if (excludeTypes.length > 0) filters.excludeTypes = excludeTypes;
     
     return filters;
 }

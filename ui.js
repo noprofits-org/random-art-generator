@@ -7,7 +7,10 @@
     // UI state
     let favoritesModalOpen = false;
     
-    // Initialize UI
+    /**
+     * Initializes all UI components and event listeners
+     * @returns {void}
+     */
     function initUI() {
         // Initialize buttons
         initButtons();
@@ -87,7 +90,10 @@
         });
     }
     
-    // Show favorites modal
+    /**
+     * Shows the favorites modal with lazy-loaded content
+     * @returns {Promise<void>}
+     */
     async function showFavoritesModal() {
         if (favoritesModalOpen || !window.MetFavorites) return;
         
@@ -202,7 +208,11 @@
         }
     }
     
-    // Display a favorite artwork from the modal
+    /**
+     * Loads and displays a favorite artwork from the modal
+     * @param {string} objectId - The Met Museum object ID
+     * @returns {Promise<void>}
+     */
     async function displayFavoriteFromModal(objectId) {
         if (!window.MetFavorites || !window.MetArtwork) return;
         
@@ -286,7 +296,12 @@
         document.body.appendChild(indicator);
     }
     
-    // Update status
+    /**
+     * Updates the status indicator with a message
+     * @param {string} message - The status message to display
+     * @param {string} [type='info'] - Status type: 'info', 'loading', 'error', 'success', 'warning'
+     * @returns {void}
+     */
     function updateStatus(message, type = 'info') {
         const indicator = document.getElementById('statusIndicator');
         if (!indicator) return;
@@ -305,7 +320,10 @@
         }
     }
     
-    // Show loading
+    /**
+     * Shows the loading indicator overlay
+     * @returns {void}
+     */
     function showLoading() {
         const container = document.getElementById('artworkContainer');
         if (!container) return;
@@ -345,7 +363,11 @@
         updateStatus('Ready', 'info');
     }
     
-    // Show error
+    /**
+     * Displays an error message with retry button
+     * @param {string} message - The error message to display
+     * @returns {void}
+     */
     function showError(message) {
         const container = document.getElementById('artworkContainer');
         if (!container) return;

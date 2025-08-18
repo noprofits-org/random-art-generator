@@ -45,7 +45,7 @@
                         });
                     });
                 } catch (error) {
-                    console.error('Service Worker registration failed:', error);
+                    window.MetLogger?.error('Service Worker registration failed:', error);
                 }
             }
             
@@ -91,7 +91,7 @@
             window.MetLogger?.log('App initialization complete');
             
         } catch (error) {
-            console.error('App initialization failed:', error);
+            window.MetLogger?.error('App initialization failed:', error);
             window.MetUI?.showError?.('Application failed to initialize. Please refresh the page.');
         }
     }

@@ -1,6 +1,21 @@
 // service-worker.js - Simple caching for Met Museum app
 // Caches static assets and recent artworks for offline use
 
+// Simple logger for service worker context
+const swLog = {
+    log: (...args) => {
+        // Only log in development
+        if (self.location.hostname === 'localhost' || self.location.hostname === '127.0.0.1') {
+            console.log('[SW]', ...args);
+        }
+    },
+    error: (...args) => {
+        // Always log errors but sanitize
+        const sanitized = args.map(arg => arg instanceof Error ? `Error: ${arg.message}` : arg);
+        console.error('[SW]', ...sanitized);
+    }
+};
+
 const CACHE_VERSION = '1.0.0';
 const CACHE_NAME = `met-art-${CACHE_VERSION}`;
 const API_CACHE_NAME = `met-api-${CACHE_VERSION}`;
@@ -25,17 +40,17 @@ const STATIC_ASSETS = [
 
 // Install event - cache static assets
 self.addEventListener('install', (event) => {
-    console.log('[Service Worker] Installing...');
+    swLog.log('Installing...');
     
     event.waitUntil(
         caches.open(CACHE_NAME)
             .then((cache) => {
-                console.log('[Service Worker] Caching static assets');
+                swLog.log('Caching static assets');
                 return cache.addAll(STATIC_ASSETS);
             })
             .then(() => self.skipWaiting())
             .catch((error) => {
-                console.error('[Service Worker] Installation failed:', error);
+                swLog.error('Installation failed:', error);
             })
     );
 });
@@ -44,6 +59,13 @@ self.addEventListener('install', (event) => {
 self.addEventListener('sync', (event) => {
     if (event.tag === 'refresh-artworks') {
         event.waitUntil(refreshCachedArtworks());
+    }
+});
+
+// Periodic background sync
+self.addEventListener('periodicsync', (event) => {
+    if (event.tag === 'refresh-content') {
+        event.waitUntil(refreshCachedContent());
     }
 });
 
@@ -64,17 +86,58 @@ async function refreshCachedArtworks() {
                     await cache.put(request, response);
                 }
             } catch (error) {
-                console.log('[Service Worker] Failed to refresh:', request.url);
+                swLog.log('Failed to refresh:', request.url);
             }
         }
     } catch (error) {
-        console.error('[Service Worker] Background sync failed:', error);
+        swLog.error('Background sync failed:', error);
+    }
+}
+
+async function refreshCachedContent() {
+    try {
+        swLog.log('Running periodic content refresh');
+        
+        // Refresh cached artworks
+        await refreshCachedArtworks();
+        
+        // Clean up old cached images
+        await cleanupOldCaches();
+        
+        // Optionally, pre-cache some new random artworks
+        const objectListResponse = await fetch('https://collectionapi.metmuseum.org/public/collection/v1/objects');
+        if (objectListResponse.ok) {
+            const data = await objectListResponse.json();
+            if (data.objectIDs && data.objectIDs.length > 0) {
+                // Cache a few random artworks
+                const randomIds = [];
+                for (let i = 0; i < 3; i++) {
+                    const randomIndex = Math.floor(Math.random() * data.objectIDs.length);
+                    randomIds.push(data.objectIDs[randomIndex]);
+                }
+                
+                const cache = await caches.open(API_CACHE_NAME);
+                for (const id of randomIds) {
+                    try {
+                        const response = await fetch(`https://collectionapi.metmuseum.org/public/collection/v1/objects/${id}`);
+                        if (response.ok) {
+                            await cache.put(response.url, response.clone());
+                            swLog.log(`Pre-cached artwork ${id}`);
+                        }
+                    } catch (error) {
+                        swLog.error(`Failed to pre-cache artwork ${id}:`, error);
+                    }
+                }
+            }
+        }
+    } catch (error) {
+        swLog.error('Periodic sync failed:', error);
     }
 }
 
 // Activate event - clean up old caches
 self.addEventListener('activate', (event) => {
-    console.log('[Service Worker] Activating...');
+    swLog.log('Activating...');
     
     event.waitUntil(
         caches.keys()
@@ -82,7 +145,7 @@ self.addEventListener('activate', (event) => {
                 return Promise.all(
                     cacheNames.map((cacheName) => {
                         if (cacheName !== CACHE_NAME && cacheName !== API_CACHE_NAME) {
-                            console.log('[Service Worker] Deleting old cache:', cacheName);
+                            swLog.log('Deleting old cache:', cacheName);
                             return caches.delete(cacheName);
                         }
                     })
@@ -252,7 +315,7 @@ async function getCachedArtworks() {
         
         return artworks;
     } catch (error) {
-        console.error('[Service Worker] Error getting cached artworks:', error);
+        swLog.error('Error getting cached artworks:', error);
         return [];
     }
 }
@@ -293,9 +356,9 @@ async function cacheArtworkManually(objectID, imageUrl, artworkData) {
             }
         }
         
-        console.log(`[Service Worker] Manually cached artwork ${objectID}`);
+        swLog.log(`Manually cached artwork ${objectID}`);
     } catch (error) {
-        console.error('[Service Worker] Error caching artwork:', error);
+        swLog.error('Error caching artwork:', error);
     }
 }
 
@@ -313,7 +376,7 @@ async function getCacheInfo() {
             totalCached: requests.length
         };
     } catch (error) {
-        console.error('[Service Worker] Error getting cache info:', error);
+        swLog.error('Error getting cache info:', error);
         return { cachedArtworks: 0, cachedImages: 0, totalCached: 0 };
     }
 }

@@ -1,6 +1,14 @@
 // artwork.js - Functions for displaying artwork
 
-// Display the artwork in the UI
+/**
+ * Displays artwork in the UI with progressive image loading
+ * @param {Object} artwork - The artwork object from Met Museum API
+ * @param {string} artwork.primaryImage - Primary image URL
+ * @param {string} artwork.primaryImageSmall - Thumbnail image URL
+ * @param {string} artwork.title - Artwork title
+ * @param {string} artwork.artistDisplayName - Artist name
+ * @returns {Promise<void>}
+ */
 async function displayArtwork(artwork) {
     if (!artwork) {
         window.MetLogger?.error('No artwork data provided');
@@ -420,7 +428,11 @@ async function displayArtwork(artwork) {
     window.MetLogger?.log('Displayed artwork:', artwork);
 }
 
-// Display favorite artwork from stored data
+/**
+ * Displays a favorited artwork from stored data
+ * @param {Object} favorite - The favorite object from IndexedDB
+ * @returns {void}
+ */
 function displayFavoriteArtwork(favorite) {
     // Convert favorite data back to artwork format
     const artwork = {

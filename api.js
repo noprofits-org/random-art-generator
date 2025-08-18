@@ -32,7 +32,13 @@
     };
     const PROXY_HEALTH_CHECK_INTERVAL = 5 * 60 * 1000; // 5 minutes
     
-    // Helper: Make API request with timeout
+    /**
+     * Makes an API request with timeout handling
+     * @param {string} url - The URL to fetch
+     * @param {number} [timeout=REQUEST_TIMEOUT] - Timeout in milliseconds
+     * @returns {Promise<Object>} The parsed JSON response
+     * @throws {Error} If request times out, fails, or returns non-OK status
+     */
     async function fetchWithTimeout(url, timeout = REQUEST_TIMEOUT) {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), timeout);
@@ -77,7 +83,12 @@
         }
     }
     
-    // Helper: Get proxy URL
+    /**
+     * Constructs a proxy URL for the given target URL
+     * @param {string} targetUrl - The URL to proxy
+     * @param {string} [proxy=CORS_PROXY_URL] - The proxy service URL
+     * @returns {string} The proxied URL
+     */
     function getProxyUrl(targetUrl, useProxy = currentProxy) {
         const proxy = PROXY_CONFIG[useProxy];
         
@@ -109,7 +120,13 @@
         }
     }
     
-    // Helper: Fetch through CORS proxy with fallback
+    /**
+     * Fetches data using proxy with automatic fallback to secondary proxy
+     * @param {string} endpoint - The API endpoint to fetch
+     * @param {string} [useProxy=null] - Specific proxy to use, or null for automatic
+     * @returns {Promise<Object>} The fetched data
+     * @throws {Error} If all proxy attempts fail
+     */
     async function fetchWithProxy(endpoint, useProxy = null) {
         const fullUrl = `${MET_API_BASE_URL}${endpoint}`;
         const proxyToUse = useProxy || currentProxy;
@@ -142,7 +159,11 @@
         }
     }
     
-    // Get a list of random object IDs
+    /**
+     * Retrieves random object IDs from the Met Museum collection
+     * @param {number} [count=50] - Number of IDs to retrieve
+     * @returns {Promise<number[]>} Array of random object IDs
+     */
     async function getRandomObjectIds(count = 50) {
         try {
             window.MetLogger?.log('Fetching random object IDs...');
@@ -163,7 +184,11 @@
         }
     }
     
-    // Get details for a specific object
+    /**
+     * Fetches detailed information about a specific artwork
+     * @param {number} objectId - The Met Museum object ID
+     * @returns {Promise<Object|null>} Artwork object or null if not found
+     */
     async function getObjectDetails(objectId) {
         // Check cache first
         const cached = detailsCache.get(objectId);
@@ -274,7 +299,10 @@
         }
     }
     
-    // Test API connection
+    /**
+     * Tests the connection to the Met Museum API
+     * @returns {Promise<boolean>} True if connection is successful
+     */
     async function testConnection() {
         try {
             const data = await fetchWithProxy('/departments');
@@ -286,7 +314,11 @@
         }
     }
     
-    // Load artwork image through proxy
+    /**
+     * Returns a proxied URL for loading artwork images
+     * @param {string} imageUrl - The original image URL
+     * @returns {string} The proxied image URL
+     */
     function loadArtworkImage(imageUrl) {
         if (!imageUrl) return '';
         
@@ -302,7 +334,11 @@
         return getProxyUrl(secureUrl, currentProxy);
     }
     
-    // Load image with explicit fallback attempt
+    /**
+     * Loads image URL with automatic proxy fallback
+     * @param {string} imageUrl - The original image URL
+     * @returns {Promise<string>} The working proxied image URL
+     */
     async function loadArtworkImageWithFallback(imageUrl) {
         if (!imageUrl) return '';
         
@@ -323,7 +359,10 @@
         return loadArtworkImage(imageUrl);
     }
     
-    // Get cached artworks from service worker
+    /**
+     * Retrieves all cached artworks for offline viewing
+     * @returns {Promise<Object[]>} Array of cached artwork objects
+     */
     async function getCachedArtworks() {
         if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
             return new Promise((resolve) => {
@@ -367,7 +406,11 @@
         }
     }
     
-    // Test proxy health on startup
+    /**
+     * Tests if the specified proxy is available and working
+     * Updates proxy health cache and selects best proxy
+     * @returns {Promise<boolean>} True if at least one proxy is healthy
+     */
     async function testProxyHealth() {
         const testImageUrl = 'https://images.metmuseum.org/CRDImages/ep/web-large/DT1567.jpg';
         

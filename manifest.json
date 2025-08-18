@@ -63,5 +63,14 @@
   "categories": ["art", "culture", "education", "entertainment"],
   "scope": "./",
   "lang": "en-US",
-  "dir": "ltr"
+  "dir": "ltr",
+  "share_target": {
+    "action": "/",
+    "method": "GET",
+    "params": {
+      "title": "title",
+      "text": "text", 
+      "url": "url"
+    }
+  }
 }

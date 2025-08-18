@@ -20,9 +20,6 @@ const CONFIG = {
     
     // Debug mode configuration (set to false for production)
     DEBUG_MODE: false,
-    // DEBUG_MODE: window.location.hostname === 'localhost' || 
-    //             window.location.hostname === '127.0.0.1' ||
-    //             window.location.search.includes('debug=true'),
     
     // Performance configuration
     SEARCH_RESULTS_PER_PAGE: 20,

@@ -518,7 +518,7 @@
             return new Promise((resolve, reject) => {
                 if (!window.indexedDB) {
                     const error = new Error('IndexedDB is not supported in this browser');
-                    console.error(error.message);
+                    window.MetLogger?.error(error.message);
                     reject(error);
                     return;
                 }
@@ -2022,7 +2022,7 @@
                         });
                     });
                 } catch (error) {
-                    console.error('Service Worker registration failed:', error);
+                    window.MetLogger?.error('Service Worker registration failed:', error);
                 }
             }
             
@@ -2070,7 +2070,7 @@
             MetLogger.log('App initialization complete');
             
         } catch (error) {
-            console.error('App initialization failed:', error);
+            window.MetLogger?.error('App initialization failed:', error);
             MetUI.showError('Application failed to initialize. Please refresh the page.');
         }
     }

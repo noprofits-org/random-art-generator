@@ -19,7 +19,7 @@ async function initFavoritesDB() {
         // Check if IndexedDB is available
         if (!window.indexedDB) {
             const error = new Error('IndexedDB is not supported in this browser');
-            console.error(error.message); // Critical: IndexedDB not supported - favorites won't work
+            window.MetLogger?.error(error.message); // Critical: IndexedDB not supported - favorites won't work
             reject(error);
             return;
         }
@@ -302,7 +302,11 @@ async function createThumbnail(imageUrl, objectID) {
     });
 }
 
-// Add artwork to favorites with better error handling
+/**
+ * Adds an artwork to favorites with thumbnail generation
+ * @param {Object} artwork - The artwork object from Met Museum API
+ * @returns {Promise<boolean>} True if successfully added, false otherwise
+ */
 async function addToFavorites(artwork) {
     try {
         // Ensure database is initialized
@@ -592,7 +596,7 @@ let initPromise = null;
 async function ensureFavoritesInitialized() {
     if (!initPromise) {
         initPromise = initFavoritesDB().catch(error => {
-            console.error('Failed to initialize favorites database. Favorites feature will not work.', error); // Critical: Database initialization failure
+            window.MetLogger?.error('Failed to initialize favorites database. Favorites feature will not work.', error); // Critical: Database initialization failure
             initPromise = null; // Allow retry
             throw error;
         });

@@ -1,0 +1,24 @@
+{
+  "name": "met-art-generator",
+  "version": "2.0.0",
+  "description": "A simplified random art discovery app using the Metropolitan Museum API",
+  "main": "app.js",
+  "scripts": {
+    "build": "./build.sh",
+    "serve": "python3 -m http.server 8000",
+    "dev": "python3 -m http.server 8000"
+  },
+  "keywords": [
+    "met",
+    "museum",
+    "art",
+    "pwa",
+    "random"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "csso-cli": "^4.0.0",
+    "terser": "^5.0.0"
+  }
+}

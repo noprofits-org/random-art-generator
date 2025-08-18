@@ -1,6 +1,5 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
@@ -24,38 +23,13 @@
     
     <!-- Apple Touch Icons -->
     <link rel="apple-touch-icon" href="./icons/icon-180x180.png">
-    <link rel="apple-touch-icon" sizes="144x144" href="./icons/icon-144x144.png">
-    <link rel="apple-touch-icon" sizes="180x180" href="./icons/icon-180x180.png">
-    <link rel="apple-touch-icon" sizes="192x192" href="./icons/icon-192x192.png">
-    <link rel="apple-touch-icon" sizes="512x512" href="./icons/icon-512x512.png">
-    
-    <!-- iOS Splash Screens (optional but recommended) -->
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="default">
-    
-    <!-- Microsoft Tiles -->
-    <meta name="msapplication-TileColor" content="#0062cc">
-    <meta name="msapplication-TileImage" content="./icons/icon-144x144.png">
-    
-    <!-- Open Graph / Social Media -->
-    <meta property="og:title" content="Met Art Generator">
-    <meta property="og:description" content="Discover random artworks from the Metropolitan Museum collection">
-    <meta property="og:type" content="website">
-    <meta property="og:image" content="./icons/icon-512x512.png">
     
     <!-- Styles -->
     <link rel="stylesheet" href="./styles.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
-
 <body>
     <div class="app-container">
-        <!-- REMOVED: Mobile Menu and Drawer - replaced with simpler controls
-        <button class="mobile-menu-button" id="mobileMenuButton">...</button>
-        <div class="mobile-overlay" id="mobileOverlay"></div>
-        <div class="controls-drawer" id="controlsDrawer">...</div>
-        -->
-        
         <!-- Simplified Controls -->
         <div class="simplified-controls">
             <h1 class="app-title">Random Art Generator</h1>
@@ -72,15 +46,8 @@
 
         <!-- Main Content Area -->
         <div class="content-area" id="contentArea">
-            <!-- REMOVED: Search Results Container
-            <div class="search-results-container" id="searchResultsContainer">
-                ...
-            </div>
-            -->
-            
             <!-- Artwork Display Container -->
             <div class="artwork-container" id="artworkContainer">
-                <!-- Artwork will be displayed here -->
                 <div class="artwork-placeholder">
                     <i class="fas fa-paint-brush"></i>
                     <p>Click "Discover Random Artwork" to begin your artistic journey</p>
@@ -116,13 +83,7 @@
         </div>
     </div>
 
-    <!-- Scripts - Core modules only -->
-    <script src="./config.js"></script>
-    <script src="./api.js"></script>
-    <script src="./favorites.js"></script>
-    <script src="./artwork.js"></script>
-    <script src="./ui.js"></script>
-    <script src="./init.js"></script>
+    <!-- Single consolidated JavaScript file -->
+    <script src="./app.js"></script>
 </body>
-
 </html>

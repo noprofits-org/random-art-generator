@@ -12,14 +12,8 @@ const STATIC_ASSETS = [
     './',
     './index.html',
     './offline.html',
-    './styles.css',
-    './config.js',
-    './logger.js',
-    './api.js',
-    './artwork.js',
-    './favorites.js',
-    './ui.js',
-    './init.js',
+    './styles-mobile.css',
+    './app.js',
     './manifest.json',
     './icons/icon-48x48.png',
     './icons/icon-72x72.png',
@@ -45,6 +39,38 @@ self.addEventListener('install', (event) => {
             })
     );
 });
+
+// Background sync for refreshing cached content
+self.addEventListener('sync', (event) => {
+    if (event.tag === 'refresh-artworks') {
+        event.waitUntil(refreshCachedArtworks());
+    }
+});
+
+async function refreshCachedArtworks() {
+    try {
+        // Get list of cached artwork URLs
+        const cache = await caches.open(API_CACHE_NAME);
+        const requests = await cache.keys();
+        
+        // Refresh a few random cached artworks
+        const artworkRequests = requests.filter(req => req.url.includes('/objects/'));
+        const toRefresh = artworkRequests.slice(0, 5); // Refresh up to 5 artworks
+        
+        for (const request of toRefresh) {
+            try {
+                const response = await fetch(request);
+                if (response.ok) {
+                    await cache.put(request, response);
+                }
+            } catch (error) {
+                console.log('[Service Worker] Failed to refresh:', request.url);
+            }
+        }
+    } catch (error) {
+        console.error('[Service Worker] Background sync failed:', error);
+    }
+}
 
 // Activate event - clean up old caches
 self.addEventListener('activate', (event) => {
@@ -228,5 +254,66 @@ async function getCachedArtworks() {
     } catch (error) {
         console.error('[Service Worker] Error getting cached artworks:', error);
         return [];
+    }
+}
+
+// Message handler for manual caching
+self.addEventListener('message', (event) => {
+    if (event.data && event.data.type === 'CACHE_ARTWORK') {
+        const { objectID, imageUrl, artworkData } = event.data;
+        
+        // Cache the artwork data and image
+        cacheArtworkManually(objectID, imageUrl, artworkData);
+    } else if (event.data && event.data.type === 'GET_CACHE_INFO') {
+        // Send back cache information
+        getCacheInfo().then(info => {
+            event.ports[0].postMessage(info);
+        });
+    }
+});
+
+async function cacheArtworkManually(objectID, imageUrl, artworkData) {
+    try {
+        const apiCache = await caches.open(API_CACHE_NAME);
+        
+        // Cache the API response
+        if (artworkData) {
+            const apiUrl = `https://collectionapi.metmuseum.org/public/collection/v1/objects/${objectID}`;
+            const apiResponse = new Response(JSON.stringify(artworkData), {
+                headers: { 'Content-Type': 'application/json' }
+            });
+            await apiCache.put(apiUrl, apiResponse);
+        }
+        
+        // Cache the image
+        if (imageUrl) {
+            const imageResponse = await fetch(imageUrl);
+            if (imageResponse.ok) {
+                await apiCache.put(imageUrl, imageResponse);
+            }
+        }
+        
+        console.log(`[Service Worker] Manually cached artwork ${objectID}`);
+    } catch (error) {
+        console.error('[Service Worker] Error caching artwork:', error);
+    }
+}
+
+async function getCacheInfo() {
+    try {
+        const apiCache = await caches.open(API_CACHE_NAME);
+        const requests = await apiCache.keys();
+        
+        const artworkCount = requests.filter(req => req.url.includes('/objects/')).length;
+        const imageCount = requests.filter(req => req.url.includes('images.metmuseum.org')).length;
+        
+        return {
+            cachedArtworks: artworkCount,
+            cachedImages: imageCount,
+            totalCached: requests.length
+        };
+    } catch (error) {
+        console.error('[Service Worker] Error getting cache info:', error);
+        return { cachedArtworks: 0, cachedImages: 0, totalCached: 0 };
     }
 }

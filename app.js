@@ -22,8 +22,11 @@
                 format: 'path'
             }
         },
-        CACHE_DURATION: 30 * 60 * 1000, // 30 minutes
-        DEBUG_MODE: window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+        CACHE_DURATION: 5 * 60 * 1000, // 5 minutes for API responses
+        IMAGE_CACHE_DURATION: 30 * 60 * 1000, // 30 minutes for images
+        DEBUG_MODE: window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1',
+        RETRY_DELAYS: [1000, 2000, 4000], // Exponential backoff delays
+        PRELOAD_COUNT: 3 // Number of artworks to preload
     };
     
     // ===========================
@@ -42,6 +45,9 @@
     // ===========================
     const MetAPI = (() => {
         const detailsCache = new Map();
+        const requestCache = new Map(); // Cache for all API requests
+        const preloadQueue = [];
+        let isPreloading = false;
         let currentProxy = 'primary';
         const proxyHealthCache = {
             primary: { healthy: true, lastCheck: 0 },
@@ -49,13 +55,15 @@
         };
         const PROXY_HEALTH_CHECK_INTERVAL = 5 * 60 * 1000;
         
-        async function fetchWithTimeout(url, timeout = CONFIG.REQUEST_TIMEOUT) {
+        async function fetchWithTimeout(url, timeout = CONFIG.REQUEST_TIMEOUT, retryCount = 0) {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), timeout);
             
             const warningTimeout = setTimeout(() => {
-                MetUI.updateStatus('Taking longer than usual...', 'warning');
-            }, 10000);
+                if (retryCount === 0) {
+                    MetUI.updateStatus('Connecting to the museum...', 'info');
+                }
+            }, 3000);
             
             try {
                 const response = await fetch(url, { 
@@ -69,10 +77,10 @@
                 clearTimeout(warningTimeout);
                 
                 if (!response.ok) {
-                    const errorMessage = response.status === 503 ? 'Service temporarily unavailable' :
-                                        response.status === 429 ? 'Too many requests - please wait a moment' :
-                                        response.status === 404 ? 'Content not found' :
-                                        `Server error (${response.status})`;
+                    const errorMessage = response.status === 503 ? "The museum's servers are busy. Try again in a moment." :
+                                        response.status === 429 ? 'Too many requests. Please wait a moment.' :
+                                        response.status === 404 ? 'This content is not available.' :
+                                        `Unable to connect (Error ${response.status})`;
                     throw new Error(errorMessage);
                 }
                 
@@ -82,10 +90,17 @@
                 clearTimeout(warningTimeout);
                 
                 if (error.name === 'AbortError') {
-                    const timeoutMessage = timeout > 20000 ? 'Request took too long - the server might be busy' :
-                                          'Request timed out - please check your connection';
-                    throw new Error(timeoutMessage);
+                    throw new Error('Connection timeout. Check your internet connection.');
                 }
+                
+                // Retry with exponential backoff
+                if (retryCount < CONFIG.RETRY_DELAYS.length) {
+                    const delay = CONFIG.RETRY_DELAYS[retryCount];
+                    MetLogger.log(`Retrying after ${delay}ms (attempt ${retryCount + 1})`);
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    return fetchWithTimeout(url, timeout, retryCount + 1);
+                }
+                
                 throw error;
             }
         }
@@ -113,6 +128,14 @@
         }
         
         async function fetchWithProxy(endpoint, useProxy = null) {
+            // Check cache first
+            const cacheKey = `${endpoint}_${Date.now()}`;
+            const cached = getCachedRequest(endpoint);
+            if (cached) {
+                MetLogger.log(`Using cached response for ${endpoint}`);
+                return cached;
+            }
+            
             const fullUrl = `${CONFIG.MET_API_BASE_URL}${endpoint}`;
             const proxyToUse = useProxy || currentProxy;
             const proxiedUrl = getProxyUrl(fullUrl, proxyToUse);
@@ -124,6 +147,9 @@
                 proxyHealthCache[proxyToUse].healthy = true;
                 proxyHealthCache[proxyToUse].lastCheck = Date.now();
                 
+                // Cache the successful response
+                setCachedRequest(endpoint, result);
+                
                 return result;
             } catch (error) {
                 MetLogger.error(`${proxyToUse} proxy failed:`, error);
@@ -132,12 +158,44 @@
                 proxyHealthCache[proxyToUse].lastCheck = Date.now();
                 
                 if (proxyToUse === 'primary' && proxyHealthCache.fallback.healthy) {
-                    MetLogger.log('Trying fallback proxy...');
+                    MetLogger.log('Trying backup server...');
                     rotateProxy();
                     return fetchWithProxy(endpoint, 'fallback');
                 }
                 
+                // If we have a stale cache, use it as fallback
+                const staleCache = requestCache.get(endpoint);
+                if (staleCache) {
+                    MetLogger.log('Using stale cache as fallback');
+                    MetUI.updateStatus('Using cached data', 'warning');
+                    return staleCache.data;
+                }
+                
                 throw error;
+            }
+        }
+        
+        function getCachedRequest(endpoint) {
+            const cached = requestCache.get(endpoint);
+            if (cached && Date.now() - cached.timestamp < CONFIG.CACHE_DURATION) {
+                return cached.data;
+            }
+            return null;
+        }
+        
+        function setCachedRequest(endpoint, data) {
+            requestCache.set(endpoint, {
+                data: data,
+                timestamp: Date.now()
+            });
+            
+            // Clean up old cache entries
+            if (requestCache.size > 100) {
+                const entries = Array.from(requestCache.entries());
+                entries.sort((a, b) => a[1].timestamp - b[1].timestamp);
+                for (let i = 0; i < 20; i++) {
+                    requestCache.delete(entries[i][0]);
+                }
             }
         }
         
@@ -161,7 +219,7 @@
         
         async function getObjectDetails(objectId) {
             const cached = detailsCache.get(objectId);
-            if (cached && Date.now() - cached.timestamp < CONFIG.CACHE_DURATION) {
+            if (cached && Date.now() - cached.timestamp < CONFIG.IMAGE_CACHE_DURATION) {
                 MetLogger.log(`Using cached details for object ${objectId}`);
                 return cached.data;
             }
@@ -184,6 +242,9 @@
                         }
                     }
                     
+                    // Preload image for better performance
+                    preloadImage(data);
+                    
                     return data;
                 }
                 
@@ -195,6 +256,13 @@
             }
         }
         
+        function preloadImage(artwork) {
+            if (artwork.primaryImageSmall) {
+                const img = new Image();
+                img.src = loadArtworkImage(artwork.primaryImageSmall);
+            }
+        }
+        
         async function getRandomArtwork() {
             try {
                 MetUI.showLoading();
@@ -202,8 +270,12 @@
                 
                 if (!navigator.onLine) {
                     MetLogger.log('Offline - attempting to load cached artwork');
-                    MetUI.updateLoadingMessage('Loading from offline collection...');
-                    // In a real app, implement cached artwork retrieval here
+                    MetUI.updateLoadingMessage('Loading from your saved collection...');
+                    const cachedArtwork = await getRandomCachedArtwork();
+                    if (cachedArtwork) {
+                        MetUI.hideLoading();
+                        return cachedArtwork;
+                    }
                 }
                 
                 const objectIds = await getRandomObjectIds(50);
@@ -241,7 +313,18 @@
             } catch (error) {
                 MetLogger.error('Error getting random artwork:', error);
                 MetUI.hideLoading();
-                MetUI.showError('Unable to load artwork. Please try again.');
+                
+                // Try to load from cache if available
+                const cachedArtwork = await getRandomCachedArtwork();
+                if (cachedArtwork) {
+                    MetUI.updateStatus('Loaded from your collection', 'info');
+                    return cachedArtwork;
+                }
+                
+                const errorMessage = !navigator.onLine ? 
+                    'Check your internet connection' : 
+                    "The museum's servers are busy. Try again in a moment.";
+                MetUI.showError(errorMessage);
                 return null;
             }
         }
@@ -334,13 +417,81 @@
             return true;
         }
         
+        async function getRandomCachedArtwork() {
+            try {
+                const cached = Array.from(detailsCache.values())
+                    .filter(item => item.data && (item.data.primaryImage || item.data.primaryImageSmall));
+                
+                if (cached.length > 0) {
+                    const randomIndex = Math.floor(Math.random() * cached.length);
+                    return cached[randomIndex].data;
+                }
+                
+                return null;
+            } catch (error) {
+                MetLogger.error('Error getting cached artwork:', error);
+                return null;
+            }
+        }
+        
+        async function preloadNextArtworks() {
+            if (isPreloading || preloadQueue.length >= CONFIG.PRELOAD_COUNT) return;
+            
+            isPreloading = true;
+            try {
+                const objectIds = await getRandomObjectIds(CONFIG.PRELOAD_COUNT * 2);
+                
+                for (const objectId of objectIds) {
+                    if (preloadQueue.length >= CONFIG.PRELOAD_COUNT) break;
+                    
+                    // Check if already cached
+                    if (detailsCache.has(objectId)) continue;
+                    
+                    const details = await getObjectDetails(objectId);
+                    if (details) {
+                        preloadQueue.push(objectId);
+                        MetLogger.log(`Preloaded artwork ${objectId}`);
+                    }
+                }
+            } catch (error) {
+                MetLogger.error('Error preloading artworks:', error);
+            } finally {
+                isPreloading = false;
+            }
+        }
+        
+        async function getPreloadedArtwork() {
+            while (preloadQueue.length > 0) {
+                const objectId = preloadQueue.shift();
+                const cached = detailsCache.get(objectId);
+                if (cached && cached.data) {
+                    // Start preloading more in background
+                    setTimeout(preloadNextArtworks, 1000);
+                    return cached.data;
+                }
+            }
+            return null;
+        }
+        
+        function getCacheInfo() {
+            return {
+                cachedArtworks: detailsCache.size,
+                cachedRequests: requestCache.size,
+                preloadedArtworks: preloadQueue.length
+            };
+        }
+        
         return {
             getRandomArtwork,
             getObjectDetails,
             testConnection,
             loadArtworkImage,
             testProxyHealth,
-            rotateProxy
+            rotateProxy,
+            preloadNextArtworks,
+            getPreloadedArtwork,
+            getCacheInfo,
+            getRandomCachedArtwork
         };
     })();
     
@@ -968,19 +1119,19 @@
                     placeholderCanvas.remove();
                     
                     const errorType = img.dataset.errorType || 'unknown';
-                    let errorMessage = 'We couldn\'t load the image for this artwork.';
+                    let errorMessage = "This artwork's image isn't available. Here's another!";
                     let errorDetails = '';
                     
                     if (errorType === 'timeout') {
-                        errorMessage = 'Image loading timed out';
-                        errorDetails = 'The image is taking too long to load. This might be due to a slow connection.';
+                        errorMessage = 'Image is taking longer to load';
+                        errorDetails = 'Your connection might be slow. Try again?';
                     } else if (errorType === 'proxy') {
-                        errorDetails = 'Our image proxy service is having issues. Please try again in a moment.';
+                        errorDetails = 'Having trouble reaching the museum. Try again in a moment.';
                     } else if (!navigator.onLine) {
-                        errorMessage = 'You appear to be offline';
-                        errorDetails = 'Please check your internet connection and try again.';
+                        errorMessage = 'You\'re offline';
+                        errorDetails = 'Check your internet connection.';
                     } else {
-                        errorDetails = 'This may be due to network issues or the image being temporarily unavailable.';
+                        errorDetails = 'The museum might be updating this image.';
                     }
                     
                     if (artwork.primaryImageSmall && artwork.primaryImageSmall !== highResImg && !img.dataset.smallImageTried) {
@@ -1003,8 +1154,8 @@
                                 <button class="retry-button primary" id="retryImageBtn">
                                     <i class="fas fa-redo"></i> Try Again
                                 </button>
-                                <button class="retry-button secondary" id="retryDifferentBtn">
-                                    <i class="fas fa-server"></i> Try Different Server
+                                <button class="retry-button secondary" id="loadNewArtworkBtn">
+                                    <i class="fas fa-dice"></i> Show Another Artwork
                                 </button>
                                 <a href="${artwork.objectURL}" target="_blank" class="view-met-link">
                                     <i class="fas fa-external-link-alt"></i> View on Met Website
@@ -1014,14 +1165,14 @@
                     `;
                     
                     const retryBtn = imgContainer.querySelector('#retryImageBtn');
-                    const retryDifferentBtn = imgContainer.querySelector('#retryDifferentBtn');
+                    const loadNewBtn = imgContainer.querySelector('#loadNewArtworkBtn');
                     
                     if (retryBtn) {
                         let retryCount = 0;
                         retryBtn.addEventListener('click', async function() {
                             retryCount++;
                             retryBtn.disabled = true;
-                            retryDifferentBtn.disabled = true;
+                            if (loadNewBtn) loadNewBtn.disabled = true;
                             retryBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Retrying...';
                             
                             const delay = Math.min(1000 * Math.pow(2, retryCount - 1), 5000);
@@ -1031,24 +1182,24 @@
                         });
                     }
                     
-                    if (retryDifferentBtn) {
-                        retryDifferentBtn.addEventListener('click', async function() {
-                            retryBtn.disabled = true;
-                            retryDifferentBtn.disabled = true;
-                            retryDifferentBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Switching...';
+                    if (loadNewBtn) {
+                        loadNewBtn.addEventListener('click', async function() {
+                            if (retryBtn) retryBtn.disabled = true;
+                            loadNewBtn.disabled = true;
+                            loadNewBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Loading...';
                             
-                            if (MetAPI.rotateProxy) {
-                                await MetAPI.rotateProxy();
+                            // Load a new artwork instead
+                            const newArtwork = await MetAPI.getRandomArtwork();
+                            if (newArtwork) {
+                                displayArtwork(newArtwork);
                             }
-                            
-                            displayArtwork(artwork);
                         });
                     }
                     
                     MetLogger.error(`Failed to load image through proxy: ${artwork.primaryImage}`);
                 };
                 
-                img.loading = 'lazy';
+                // Main artwork image should load immediately (not lazy)
                 img.decoding = 'async';
                 
                 const loadImageWithProxy = async () => {
@@ -1259,12 +1410,28 @@
                     if ('vibrate' in navigator && window.innerWidth < 768) {
                         navigator.vibrate(10);
                     }
-                    const artwork = await MetAPI.getRandomArtwork();
+                    // Try to get preloaded artwork first for better performance
+                    let artwork = null;
+                    if (MetAPI.getPreloadedArtwork) {
+                        artwork = await MetAPI.getPreloadedArtwork();
+                    }
+                    
+                    if (!artwork) {
+                        artwork = await MetAPI.getRandomArtwork();
+                    }
+                    
                     if (artwork) {
                         currentArtwork = artwork;
                         MetArtwork.displayArtwork(artwork);
                         // Update mobile info panel
                         updateMobileInfoPanel(artwork);
+                        
+                        // Preload more in background
+                        setTimeout(() => {
+                            if (navigator.onLine && MetAPI.preloadNextArtworks) {
+                                MetAPI.preloadNextArtworks();
+                            }
+                        }, 1000);
                     }
                 });
             });
@@ -1503,7 +1670,11 @@
             if (container) {
                 container.innerHTML = `
                     <div class="error-message">
+                        <i class="fas fa-exclamation-circle"></i>
                         <p>${message}</p>
+                        <button class="retry-button primary" onclick="document.getElementById('randomArtButton').click()">
+                            <i class="fas fa-dice"></i> Try Another Artwork
+                        </button>
                     </div>
                 `;
             }
@@ -1530,13 +1701,34 @@
         }
         
         function initOfflineDetection() {
-            window.addEventListener('online', () => {
-                updateStatus('Connection restored', 'success');
+            updateOnlineStatus(navigator.onLine);
+            
+            window.addEventListener('online', async () => {
+                updateOnlineStatus(true);
+                updateStatus('Back online!', 'success');
+                
+                // Preload artworks in background when back online
+                setTimeout(() => {
+                    if (window.MetAPI && window.MetAPI.preloadNextArtworks) {
+                        window.MetAPI.preloadNextArtworks();
+                    }
+                }, 2000);
             });
             
             window.addEventListener('offline', () => {
-                updateStatus('You are offline', 'warning');
+                updateOnlineStatus(false);
             });
+        }
+        
+        async function updateOnlineStatus(isOnline) {
+            if (!isOnline) {
+                const cacheInfo = window.MetAPI ? window.MetAPI.getCacheInfo() : { cachedArtworks: 0 };
+                if (cacheInfo.cachedArtworks > 0) {
+                    updateStatus(`Offline - ${cacheInfo.cachedArtworks} artworks available`, 'warning');
+                } else {
+                    updateStatus('Offline - no cached artworks', 'warning');
+                }
+            }
         }
         
         function initMobileUI() {
@@ -1756,8 +1948,16 @@
                         navigator.vibrate(20);
                     }
                     
-                    // Load new artwork
-                    const artwork = await MetAPI.getRandomArtwork();
+                    // Try to get preloaded artwork first
+                    let artwork = null;
+                    if (MetAPI.getPreloadedArtwork) {
+                        artwork = await MetAPI.getPreloadedArtwork();
+                    }
+                    
+                    if (!artwork) {
+                        artwork = await MetAPI.getRandomArtwork();
+                    }
+                    
                     if (artwork) {
                         currentArtwork = artwork;
                         MetArtwork.displayArtwork(artwork);
@@ -1849,6 +2049,15 @@
             MetAPI.testProxyHealth().catch(err => {
                 MetLogger.warn('Proxy health check failed:', err);
             });
+            
+            // Start preloading artworks in background
+            setTimeout(() => {
+                if (navigator.onLine) {
+                    MetAPI.preloadNextArtworks().catch(err => {
+                        MetLogger.warn('Failed to preload artworks:', err);
+                    });
+                }
+            }, 3000);
             
             const urlParams = new URLSearchParams(window.location.search);
             if (urlParams.get('action') === 'random') {

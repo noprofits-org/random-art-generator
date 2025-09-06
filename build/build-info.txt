@@ -1,9 +1,0 @@
-Met Art Generator Production Build
-Built on: Sun Aug 17 19:14:37 PDT 2025
-Files included:
-- index.html
-- app.js (consolidated)
-- styles.css
-- manifest.json
-- service-worker.js
-- icons/

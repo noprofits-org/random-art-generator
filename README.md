@@ -1,6 +1,6 @@
-# Met Art Generator
+# Met Art Generator (Simplified)
 
-A professional Progressive Web App (PWA) that displays random artworks from the Metropolitan Museum of Art collection. Built with vanilla JavaScript, featuring offline support, accessibility, and a polished user experience.
+A minimal web page that displays a random artwork from the Metropolitan Museum of Art collection using the public API. Single HTML + JS, no build, no frameworks.
 
 ## Features
 
@@ -21,67 +21,28 @@ A professional Progressive Web App (PWA) that displays random artworks from the 
    cd random-art-generator
    ```
 
-2. **Serve the files**
-   
-   You can use any static file server. Here are a few options:
-   
-   Using Python:
-   ```bash
-   python3 -m http.server 8000
-   ```
-   
-   Using Node.js (http-server):
-   ```bash
-   npx http-server -p 8000
-   ```
-   
-   Using Live Server in VS Code:
-   - Install the Live Server extension
-   - Right-click on `index.html` and select "Open with Live Server"
+2. **Open in a browser**
+   - Double‑click `index.html`, or
+   - Serve locally (optional):
+     - Python: `python3 -m http.server 8000` → open http://localhost:8000
+     - Node: `npx http-server -p 8000` → open http://localhost:8000
 
-3. **Open in browser**
-   
-   Navigate to `http://localhost:8000`
+## What’s Included
 
-## Installation as PWA
-
-The app can be installed as a Progressive Web App on supported devices:
-
-1. **Desktop (Chrome/Edge)**
-   - Look for the install icon in the address bar
-   - Or use the menu: ⋮ → "Install Met Art Generator"
-
-2. **iOS**
-   - Open in Safari
-   - Tap the Share button
-   - Select "Add to Home Screen"
-
-3. **Android**
-   - Chrome will show an install banner
-   - Or use menu: ⋮ → "Add to Home Screen"
+- `index.html` – Minimal UI with a button to load a random artwork
+- `main.js` – Fetch logic with a simple CORS-proxy fallback
+- `icons/` – App icons (for favicons or future PWA use)
+- `tools/icon-resizer/` – A standalone, browser‑only icon generator
 
 ## Project Structure
 
 ```
 random-art-generator/
-├── index.html              # Main HTML file
-├── offline.html            # Offline fallback page
-├── manifest.json           # PWA manifest
-├── service-worker.js       # Service worker for offline support
-├── app.js                  # Main application bundle
-├── styles-mobile.css       # Mobile-first styles
-├── styles-enhancements.css # Animation and transition enhancements
-├── config.js               # Configuration and logging
-├── api.js                  # Met Museum API integration
-├── artwork.js              # Artwork display logic
-├── ui.js                   # UI components and interactions
-├── favorites.js            # Favorites management
-├── init.js                 # App initialization
-├── ui-enhancements.js      # Enhanced UI features
-├── accessibility-enhancements.js  # Accessibility features
-├── pwa-enhancements.js     # PWA-specific features
-├── icons/                  # App icons for various devices
-└── splash/                 # Splash screens for iOS devices
+├── index.html
+├── main.js
+├── icons/
+└── tools/
+    └── icon-resizer/
 ```
 
 ## Development
@@ -103,20 +64,13 @@ DEBUG_MODE: true, // Set to false for production
 
 2. The production files will be in the `build/` directory
 
-### Key Technologies
-
-- **Vanilla JavaScript** - No framework dependencies
-- **IndexedDB** - For storing favorites
-- **Service Workers** - For offline functionality
-- **CORS Proxies** - To access Met Museum images
-- **Progressive Enhancement** - Works without JavaScript, enhanced with it
-
 ### API Integration
 
-The app uses the Metropolitan Museum of Art Collection API:
 - Base URL: `https://collectionapi.metmuseum.org/public/collection/v1`
 - No API key required
-- CORS proxy used for images
+- If a fetch fails due to CORS/network, a simple proxy fallback is used:
+  - Primary: `https://cors-proxy-xi-ten.vercel.app/api/proxy?url=`
+  - Fallback: `https://corsproxy.io/?` (path mode)
 
 ## Features in Detail
 
@@ -135,20 +89,11 @@ The app uses the Metropolitan Museum of Art Collection API:
 - **Lazy Loading**: Images in favorites grid load as needed
 - **Smart Caching**: Intelligent cache management with size limits
 
-### PWA Features
-
-- **Offline Support**: View previously loaded artworks offline
-- **Install Prompts**: Custom install UI
-- **Share Target**: Share Met Museum links to the app
-- **Periodic Sync**: Background content refresh
-- **Standalone Mode**: Custom navigation for installed app
+PWA features and other complexity have been intentionally removed to keep the app focused and minimal.
 
 ## Browser Support
 
-- Chrome/Edge: Full support
-- Firefox: Full support (except share target)
-- Safari: Full support (limited PWA features)
-- Mobile browsers: Optimized for iOS Safari and Chrome
+- Modern browsers with fetch and ES6 support
 
 ## Contributing
 
@@ -172,21 +117,12 @@ This project is open source and available under the MIT License.
 
 ## Troubleshooting
 
-### Images not loading
-- Check your internet connection
-- The app uses CORS proxies which may occasionally be slow
-- Try refreshing the page
-
-### Favorites not saving
-- Ensure your browser supports IndexedDB
-- Check if you're in private/incognito mode
-- Clear browser data and try again
-
-### Installation issues
-- Ensure you're using a supported browser
-- The site must be served over HTTPS for PWA features
-- Check that service worker is registered
+- If loading fails, try again — the app retries with a CORS proxy fallback.
 
 ---
 
 Made with ❤️ for art lovers everywhere
+
+## Tools
+
+- Icon Resizer: open `tools/icon-resizer/index.html` to generate PWA icon sizes from a single image.

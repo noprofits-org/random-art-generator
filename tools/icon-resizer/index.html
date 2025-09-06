@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Icon Resizer</title>
+  <style>
+    :root {
+      --primary: #0062cc;
+      --primary-600: #0056b3;
+      --bg: #f5f7fa;
+      --card: #fff;
+      --muted: #666;
+      --muted-2: #999;
+      --border: #e0e0e0;
+      --accent: #e3f2fd;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+      margin: 0 auto; padding: 20px; max-width: 1200px; background: var(--bg);
+    }
+    .container { background: var(--card); border-radius: 12px; padding: 24px; box-shadow: 0 2px 10px rgba(0,0,0,.08); }
+    h1 { margin: 0 0 6px; text-align: center; color: var(--primary); }
+    .subtitle { text-align: center; color: var(--muted); margin: 0 0 18px; }
+    .instructions { background: var(--accent); border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+    .instructions h3 { margin: 0 0 8px; color: var(--primary); }
+    .upload { border: 3px dashed var(--primary); border-radius: 10px; background: #f8f9fa; padding: 38px 16px; text-align: center; transition: .2s; }
+    .upload.dragover { background: #e8f3ff; border-color: #1976d2; }
+    .btn { display: inline-block; background: var(--primary); color: #fff; border: 0; border-radius: 8px; padding: 10px 16px; cursor: pointer; font-weight: 600; }
+    .btn:hover { background: var(--primary-600); }
+    .btn-outline { background: #fff; color: var(--primary); border: 2px solid var(--primary); }
+    .btn-outline:hover { background: var(--primary); color: #fff; }
+    .preview { display: none; margin: 18px 0; }
+    .preview-card { background: #f8f9fa; border-radius: 8px; padding: 16px; text-align: center; }
+    .preview-img { max-width: 280px; max-height: 280px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,.08); }
+    .muted { color: var(--muted); }
+    .sizes { display: none; }
+    .size-controls { background: #f8f9fa; border-radius: 8px; padding: 12px; }
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+    .chip { padding: 8px 12px; border-radius: 999px; border: 2px solid var(--primary); cursor: pointer; color: var(--primary); background: #fff; font-weight: 600; }
+    .chip.active { background: var(--primary); color: #fff; }
+    .custom { display: flex; gap: 8px; align-items: center; margin-top: 10px; }
+    .custom input { width: 110px; padding: 8px; border: 2px solid #ddd; border-radius: 6px; }
+    .actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 12px 0; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; margin-top: 12px; }
+    .card { background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: 14px; text-align: center; }
+    .icon-preview { display: inline-block; padding: 10px; background: #f5f5f5; border-radius: 6px; margin-bottom: 10px; }
+    .size-label { font-weight: 700; margin-bottom: 8px; }
+    .footer-note { color: var(--muted-2); font-size: 13px; text-align: center; margin-top: 16px; }
+    .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+    .row .btn { flex: 0 0 auto; }
+    .row .spacer { flex: 1 1 auto; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Icon Resizer</h1>
+    <p class="subtitle">Generate PWA icons from a single image — all client‑side</p>
+
+    <div class="instructions">
+      <h3>How it works</h3>
+      <ol>
+        <li>Upload a square 512×512 PNG (recommended). Non‑square images are cropped to center.</li>
+        <li>Select sizes (or add custom), then Generate.</li>
+        <li>Download individual icons or use Download All (multiple files).</li>
+      </ol>
+    </div>
+
+    <div id="drop" class="upload">
+      <label for="file" class="btn">📁 Choose Icon</label>
+      <input id="file" type="file" accept="image/*" hidden />
+      <p class="muted" style="margin:10px 0 0">or drag & drop your image here</p>
+      <p class="muted" style="margin:4px 0 0; font-size: 13px">Tip: 512×512 PNG with transparency</p>
+    </div>
+
+    <section id="preview" class="preview">
+      <h2>Original Icon</h2>
+      <div class="preview-card">
+        <img id="previewImg" class="preview-img" alt="Preview" />
+        <p id="dim" class="muted" style="margin: 10px 0 0"></p>
+      </div>
+    </section>
+
+    <section id="sizes" class="sizes">
+      <h2>Icon Sizes</h2>
+      <div class="size-controls">
+        <div id="chips" class="chips"></div>
+        <div class="custom">
+          <label for="customSize">Custom:</label>
+          <input id="customSize" type="number" placeholder="256" min="16" max="1024" />
+          <button id="addSize" class="btn btn-outline">Add Size</button>
+        </div>
+      </div>
+      <div class="actions row">
+        <button id="gen" class="btn">🎨 Generate Selected Icons</button>
+        <span class="spacer"></span>
+        <button id="dlAll" class="btn btn-outline">📦 Download All</button>
+        <button id="copyManifest" class="btn btn-outline">🧩 Copy Manifest Snippet</button>
+      </div>
+      <div id="grid" class="grid"></div>
+      <p class="footer-note">Download All triggers multiple file downloads (no ZIP dependency).</p>
+    </section>
+  </div>
+
+  <script>
+    const presetSizes = [48, 72, 96, 128, 144, 152, 167, 180, 192, 256, 384, 512];
+    const selected = new Set(presetSizes);
+    const chips = document.getElementById('chips');
+    const drop = document.getElementById('drop');
+    const file = document.getElementById('file');
+    const preview = document.getElementById('preview');
+    const sizes = document.getElementById('sizes');
+    const previewImg = document.getElementById('previewImg');
+    const dim = document.getElementById('dim');
+    const customSize = document.getElementById('customSize');
+    const addSize = document.getElementById('addSize');
+    const genBtn = document.getElementById('gen');
+    const grid = document.getElementById('grid');
+    const dlAll = document.getElementById('dlAll');
+    const copyManifest = document.getElementById('copyManifest');
+
+    let img = null; // Image object
+
+    // Build chips
+    function renderChips() {
+      chips.innerHTML = '';
+      [...new Set([...presetSizes, ...selected])].sort((a,b)=>a-b).forEach(size => {
+        const btn = document.createElement('button');
+        btn.className = 'chip' + (selected.has(size) ? ' active' : '');
+        btn.textContent = size + '×' + size;
+        btn.onclick = () => {
+          if (selected.has(size)) selected.delete(size); else selected.add(size);
+          renderChips();
+        };
+        chips.appendChild(btn);
+      });
+    }
+    renderChips();
+
+    // Drag & drop
+    ['dragover','dragenter'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('dragover'); }));
+    ;['dragleave','drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('dragover'); }));
+    drop.addEventListener('drop', e => {
+      const f = e.dataTransfer.files && e.dataTransfer.files[0];
+      if (f) handleFile(f);
+    });
+    file.addEventListener('change', e => { const f = e.target.files[0]; if (f) handleFile(f); });
+
+    function handleFile(f) {
+      if (!f.type.startsWith('image/')) { alert('Please upload an image'); return; }
+      const reader = new FileReader();
+      reader.onload = e => {
+        const i = new Image();
+        i.onload = () => {
+          img = i;
+          previewImg.src = e.target.result;
+          dim.textContent = `Size: ${i.width}×${i.height}px`;
+          preview.style.display = 'block';
+          sizes.style.display = 'block';
+          if (i.width !== i.height) {
+            console.warn('Image not square; will be center‑cropped.');
+          }
+        };
+        i.src = e.target.result;
+      };
+      reader.readAsDataURL(f);
+    }
+
+    addSize.addEventListener('click', () => {
+      const val = parseInt(customSize.value, 10);
+      if (!val || val < 16 || val > 1024) { alert('Enter a size between 16 and 1024'); return; }
+      selected.add(val);
+      customSize.value = '';
+      renderChips();
+    });
+
+    genBtn.addEventListener('click', () => {
+      if (!img) { alert('Upload an image first'); return; }
+      grid.innerHTML = '';
+      [...selected].sort((a,b)=>a-b).forEach(size => generateIcon(size));
+    });
+
+    function generateIcon(size) {
+      const canvas = document.createElement('canvas');
+      canvas.width = size; canvas.height = size;
+      const ctx = canvas.getContext('2d');
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      // Square crop
+      const srcSize = Math.min(img.width, img.height);
+      const sx = (img.width - srcSize) / 2;
+      const sy = (img.height - srcSize) / 2;
+      ctx.drawImage(img, sx, sy, srcSize, srcSize, 0, 0, size, size);
+
+      const card = document.createElement('div');
+      card.className = 'card';
+      const previewBox = document.createElement('div');
+      previewBox.className = 'icon-preview';
+      const pimg = document.createElement('img');
+      pimg.src = canvas.toDataURL('image/png');
+      pimg.style.width = Math.min(size, 128) + 'px';
+      pimg.style.height = Math.min(size, 128) + 'px';
+      previewBox.appendChild(pimg);
+
+      const label = document.createElement('div');
+      label.className = 'size-label';
+      label.textContent = `${size}×${size}`;
+
+      const row = document.createElement('div');
+      row.className = 'row';
+      const dl = document.createElement('button');
+      dl.className = 'btn';
+      dl.textContent = 'Download';
+      dl.onclick = () => downloadIcon(canvas, size);
+
+      const name = document.createElement('span');
+      name.className = 'muted';
+      name.textContent = `icon-${size}x${size}.png`;
+      row.appendChild(dl);
+      row.appendChild(name);
+
+      card.appendChild(previewBox);
+      card.appendChild(label);
+      card.appendChild(row);
+      grid.appendChild(card);
+    }
+
+    function downloadIcon(canvas, size) {
+      canvas.toBlob(blob => {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `icon-${size}x${size}.png`;
+        a.click();
+        URL.revokeObjectURL(url);
+      }, 'image/png');
+    }
+
+    dlAll.addEventListener('click', () => {
+      if (!img) { alert('Upload an image first'); return; }
+      alert('Downloading each icon individually. Allow multiple downloads.');
+      let delay = 0;
+      [...selected].sort((a,b)=>a-b).forEach(size => {
+        setTimeout(() => {
+          const c = document.createElement('canvas');
+          c.width = size; c.height = size;
+          const ctx = c.getContext('2d');
+          ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+          const srcSize = Math.min(img.width, img.height);
+          const sx = (img.width - srcSize) / 2; const sy = (img.height - srcSize) / 2;
+          ctx.drawImage(img, sx, sy, srcSize, srcSize, 0, 0, size, size);
+          downloadIcon(c, size);
+        }, delay);
+        delay += 250;
+      });
+    });
+
+    copyManifest.addEventListener('click', () => {
+      const sizesList = [...selected].sort((a,b)=>a-b);
+      const icons = sizesList.map(s => ({
+        src: `./icons/icon-${s}x${s}.png`, sizes: `${s}x${s}`, type: 'image/png', purpose: 'any maskable'
+      }));
+      const snippet = JSON.stringify({ icons }, null, 2);
+      navigator.clipboard.writeText(snippet).then(() => {
+        alert('Manifest icons snippet copied to clipboard');
+      }, () => {
+        // Fallback prompt
+        window.prompt('Copy the manifest snippet:', snippet);
+      });
+    });
+
+    // Optional: If you want a single ZIP, include JSZip via CDN and implement here.
+    // function downloadAllAsZip() { /* not implemented to avoid external deps */ }
+  </script>
+</body>
+</html>
+

@@ -21,6 +21,9 @@
     shareBtn: document.getElementById('shareBtn'),
     copyBtn: document.getElementById('copyBtn'),
     favoriteBtn: document.getElementById('favoriteBtn'),
+    refreshBtn: document.getElementById('refreshBtn'),
+    drawer: document.getElementById('drawer'),
+    drawerHandle: document.getElementById('drawerHandle'),
   };
 
   // In-memory state
@@ -33,6 +36,7 @@
   let currentImage = null; // current image element load handler cleanup
   let currentDept = ''; // departmentId string or ''
   let favorites = JSON.parse(localStorage.getItem('met_favorites') || '[]'); // array of artwork objects
+  let drawerOpen = false; // drawer state
 
   function setStatus(msg, type = 'info') {
     els.status.textContent = msg;
@@ -42,6 +46,22 @@
   function proxied(url, proxy) {
     return proxy.mode === 'query' ? `${proxy.url}?url=${encodeURIComponent(url)}`
                                    : `${proxy.url}${encodeURIComponent(url)}`;
+  }
+
+  // Drawer functions
+  function openDrawer() {
+    drawerOpen = true;
+    els.drawer.classList.add('open');
+  }
+
+  function closeDrawer() {
+    drawerOpen = false;
+    els.drawer.classList.remove('open');
+  }
+
+  function toggleDrawer() {
+    if (drawerOpen) closeDrawer();
+    else openDrawer();
   }
 
   async function getJSONWithFallback(url, { retries = 2 } = {}) {
@@ -394,20 +414,21 @@
   const maxTapTime = 300; // max time for tap
   const maxTapMovement = 10; // max movement for tap
 
-  els.img.addEventListener('touchstart', (e) => {
+  // Image viewport gestures
+  els.img.parentElement.addEventListener('touchstart', (e) => {
     touchStartX = e.changedTouches[0].screenX;
     touchStartY = e.changedTouches[0].screenY;
     touchStartTime = Date.now();
   }, { passive: true });
 
-  els.img.addEventListener('touchend', (e) => {
+  els.img.parentElement.addEventListener('touchend', (e) => {
     touchEndX = e.changedTouches[0].screenX;
     touchEndY = e.changedTouches[0].screenY;
     const touchDuration = Date.now() - touchStartTime;
-    handleGesture(touchDuration);
+    handleImageGesture(touchDuration);
   }, { passive: true });
 
-  function handleGesture(duration) {
+  function handleImageGesture(duration) {
     const diffX = touchEndX - touchStartX;
     const diffY = touchEndY - touchStartY;
     const absDiffX = Math.abs(diffX);
@@ -415,12 +436,16 @@
 
     // Check for tap
     if (duration < maxTapTime && absDiffX < maxTapMovement && absDiffY < maxTapMovement) {
-      loadRandom();
+      if (drawerOpen) {
+        closeDrawer();
+      } else {
+        loadRandom();
+      }
       return;
     }
 
-    // Horizontal swipe (left/right navigation)
-    if (absDiffX > absDiffY && absDiffX > minSwipeDistance) {
+    // Only allow navigation swipes when drawer is closed
+    if (!drawerOpen && absDiffX > absDiffY && absDiffX > minSwipeDistance) {
       if (diffX > 0) {
         // Swipe right = previous
         goPrev();
@@ -429,17 +454,48 @@
         goNext();
       }
     }
-    // Vertical swipe (favorites)
-    else if (absDiffY > absDiffX && absDiffY > minSwipeDistance) {
-      if (diffY < 0) {
-        // Swipe up = view favorites
-        showFavorites();
-      } else {
-        // Swipe down = add to favorites
-        toggleFavorite();
+  }
+
+  // Drawer handle gestures
+  let drawerTouchStartY = 0;
+  let drawerTouchEndY = 0;
+
+  els.drawerHandle.addEventListener('touchstart', (e) => {
+    drawerTouchStartY = e.changedTouches[0].clientY;
+  }, { passive: true });
+
+  els.drawerHandle.addEventListener('touchmove', (e) => {
+    drawerTouchEndY = e.changedTouches[0].clientY;
+    const diff = drawerTouchEndY - drawerTouchStartY;
+
+    // Allow dragging the drawer
+    if (drawerOpen && diff > 0) {
+      // Dragging down when open
+      const translate = Math.min(diff, 300);
+      els.drawer.style.transform = `translateY(${translate}px)`;
+    } else if (!drawerOpen && diff < 0) {
+      // Dragging up when closed
+      const currentOffset = window.innerHeight * 0.85 - 60;
+      const translate = Math.max(currentOffset + diff, 0);
+      els.drawer.style.transform = `translateY(calc(100% - 60px - ${Math.abs(diff)}px))`;
+    }
+  }, { passive: true });
+
+  els.drawerHandle.addEventListener('touchend', () => {
+    const diff = drawerTouchEndY - drawerTouchStartY;
+    els.drawer.style.transform = ''; // Reset inline transform
+
+    if (Math.abs(diff) > 50) {
+      if (diff > 0 && drawerOpen) {
+        closeDrawer();
+      } else if (diff < 0 && !drawerOpen) {
+        openDrawer();
       }
     }
-  }
+  }, { passive: true });
+
+  // Drawer handle click/tap
+  els.drawerHandle.addEventListener('click', toggleDrawer);
 
   // Favorites system
   function toggleFavorite() {
@@ -494,6 +550,7 @@
   els.prev.addEventListener('click', goPrev);
   els.next.addEventListener('click', goNext);
   els.favoriteBtn.addEventListener('click', toggleFavorite);
+  els.refreshBtn.addEventListener('click', loadRandom);
 
   // Deep link by ?id=, else random. Also populate departments and pool.
   (async function init(){

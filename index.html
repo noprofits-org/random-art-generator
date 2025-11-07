@@ -44,8 +44,13 @@
     .link{display:inline-block;margin-top:8px;color:var(--primary);text-decoration:none;font-weight:500;font-size:0.95rem}
     .link:hover{text-decoration:underline}
 
-    .action-bar{margin-top:12px;display:flex;gap:8px;flex-wrap:wrap}
+    .action-bar{margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
     .action-bar button{flex:1 1 calc(50% - 4px);min-width:120px}
+
+    .tags{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+    .tag{font-size:0.85rem;padding:4px 10px;border-radius:6px;font-weight:500;white-space:nowrap}
+    .tag-dept{background:#eef5ff;color:#0062cc}
+    .tag-pd{background:#d4edda;color:#155724;border:1px solid #c3e6cb}
 
     .spacer{display:none}
 
@@ -105,7 +110,10 @@
       <div class="imgbox"><img id="artImg" alt="Artwork" /></div>
       <div class="info" id="info"></div>
       <div class="action-bar">
-        <span id="deptTag" class="meta" style="background:#eef5ff;padding:4px 8px;border-radius:6px;display:none"></span>
+        <div class="tags">
+          <span id="deptTag" class="tag tag-dept" style="display:none"></span>
+          <span id="pdTag" class="tag tag-pd" style="display:none">Public Domain</span>
+        </div>
         <span class="spacer"></span>
         <button id="shareBtn" class="btn-outline" aria-label="Share this artwork">Share</button>
         <button id="copyBtn" class="btn-outline" aria-label="Copy link to clipboard">Copy Link</button>

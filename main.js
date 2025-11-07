@@ -24,6 +24,10 @@
     drawer: document.getElementById('drawer'),
     drawerOverlay: document.getElementById('drawerOverlay'),
     menuBtn: document.getElementById('menuBtn'),
+    floatingFavoriteBtn: document.getElementById('floatingFavoriteBtn'),
+    floatingDownloadBtn: document.getElementById('floatingDownloadBtn'),
+    favoritesList: document.getElementById('favoritesList'),
+    favoritesCount: document.getElementById('favoritesCount'),
   };
 
   // In-memory state
@@ -478,6 +482,7 @@
     }
     localStorage.setItem('met_favorites', JSON.stringify(favorites));
     updateFavoriteButton();
+    renderFavoritesList();
   }
 
   function isFavorite(objectID) {
@@ -489,22 +494,106 @@
     const current = history[hIndex];
     const favorited = isFavorite(current.objectID);
     const heart = els.favoriteBtn.querySelector('.heart');
+    const floatingHeart = els.floatingFavoriteBtn.querySelector('.heart-float');
+
     if (favorited) {
       els.favoriteBtn.classList.add('favorited');
       heart.textContent = '♥';
       els.favoriteBtn.setAttribute('aria-label', 'Remove from favorites (F)');
-      els.favoriteBtn.setAttribute('title', 'Remove from favorites (F or swipe down)');
+      els.favoriteBtn.setAttribute('title', 'Remove from favorites');
+
+      els.floatingFavoriteBtn.classList.add('favorited');
+      floatingHeart.textContent = '♥';
     } else {
       els.favoriteBtn.classList.remove('favorited');
       heart.textContent = '♡';
       els.favoriteBtn.setAttribute('aria-label', 'Add to favorites (F)');
-      els.favoriteBtn.setAttribute('title', 'Add to favorites (F or swipe down)');
+      els.favoriteBtn.setAttribute('title', 'Add to favorites');
+
+      els.floatingFavoriteBtn.classList.remove('favorited');
+      floatingHeart.textContent = '♡';
     }
+  }
+
+  function renderFavoritesList() {
+    els.favoritesCount.textContent = favorites.length;
+
+    if (favorites.length === 0) {
+      els.favoritesList.innerHTML = '<div class="favorites-empty">No favorites yet. Tap the heart to add!</div>';
+      return;
+    }
+
+    els.favoritesList.innerHTML = favorites.map((fav, idx) => {
+      const title = escapeHTML(fav.title || 'Untitled');
+      const artist = escapeHTML(fav.artistDisplayName || 'Unknown Artist');
+      const thumb = fav.primaryImageSmall || fav.primaryImage || '';
+      return `
+        <div class="favorite-item" data-fav-index="${idx}">
+          ${thumb ? `<img src="${thumb}" alt="" class="favorite-item-thumb">` : '<div class="favorite-item-thumb"></div>'}
+          <div class="favorite-item-info">
+            <div class="favorite-item-title">${title}</div>
+            <div class="favorite-item-artist">${artist}</div>
+          </div>
+          <button class="favorite-item-remove" data-remove-index="${idx}" aria-label="Remove favorite">×</button>
+        </div>
+      `;
+    }).join('');
+
+    // Add click handlers for loading favorites
+    els.favoritesList.querySelectorAll('.favorite-item').forEach(item => {
+      item.addEventListener('click', (e) => {
+        if (e.target.classList.contains('favorite-item-remove')) {
+          // Handle remove button click
+          const removeIdx = parseInt(e.target.getAttribute('data-remove-index'), 10);
+          favorites.splice(removeIdx, 1);
+          localStorage.setItem('met_favorites', JSON.stringify(favorites));
+          renderFavoritesList();
+          updateFavoriteButton();
+          setStatus('Removed from favorites', 'info');
+        } else {
+          // Load the favorite
+          const favIdx = parseInt(item.getAttribute('data-fav-index'), 10);
+          const fav = favorites[favIdx];
+          if (fav) {
+            renderArtwork(fav);
+            pushHistory(fav);
+            setStatus('Loaded favorite', 'info');
+            closeDrawer();
+          }
+        }
+      });
+    });
+  }
+
+  function downloadCurrentImage() {
+    if (hIndex < 0 || !history[hIndex]) {
+      setStatus('No image to download', 'error');
+      return;
+    }
+
+    const current = history[hIndex];
+    const imageUrl = current.primaryImage || current.primaryImageSmall;
+
+    if (!imageUrl) {
+      setStatus('No image available for download', 'error');
+      return;
+    }
+
+    // Create a temporary link and trigger download
+    const link = document.createElement('a');
+    const filename = `met-artwork-${current.objectID}.jpg`;
+    link.href = imageUrl;
+    link.download = filename;
+    link.target = '_blank';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setStatus('Download started', 'info');
   }
 
   function showFavorites() {
     if (favorites.length === 0) {
-      setStatus('No favorites yet. Swipe down to add!', 'info');
+      setStatus('No favorites yet. Tap the heart to add!', 'info');
       return;
     }
     const random = favorites[Math.floor(Math.random() * favorites.length)];
@@ -517,9 +606,12 @@
   els.prev.addEventListener('click', goPrev);
   els.next.addEventListener('click', goNext);
   els.favoriteBtn.addEventListener('click', toggleFavorite);
+  els.floatingFavoriteBtn.addEventListener('click', toggleFavorite);
+  els.floatingDownloadBtn.addEventListener('click', downloadCurrentImage);
 
   // Deep link by ?id=, else random. Also populate departments and pool.
   (async function init(){
+    renderFavoritesList(); // Initialize favorites list
     await loadDepartments();
     await ensurePool();
     const idParam = readParam('id');

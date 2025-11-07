@@ -16,6 +16,7 @@
     img: document.getElementById('artImg'),
     info: document.getElementById('info'),
     deptTag: document.getElementById('deptTag'),
+    pdTag: document.getElementById('pdTag'),
     deptSelect: document.getElementById('deptSelect'),
     shareBtn: document.getElementById('shareBtn'),
     copyBtn: document.getElementById('copyBtn'),
@@ -134,6 +135,12 @@
       els.deptTag.textContent = a.department;
     } else {
       els.deptTag.style.display = 'none';
+    }
+
+    if (a.isPublicDomain) {
+      els.pdTag.style.display = '';
+    } else {
+      els.pdTag.style.display = 'none';
     }
   }
 

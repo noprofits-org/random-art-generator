@@ -20,6 +20,7 @@
     deptSelect: document.getElementById('deptSelect'),
     shareBtn: document.getElementById('shareBtn'),
     copyBtn: document.getElementById('copyBtn'),
+    favoriteBtn: document.getElementById('favoriteBtn'),
   };
 
   // In-memory state
@@ -31,6 +32,7 @@
   let currentDetailController = null; // AbortController for details
   let currentImage = null; // current image element load handler cleanup
   let currentDept = ''; // departmentId string or ''
+  let favorites = JSON.parse(localStorage.getItem('met_favorites') || '[]'); // array of artwork objects
 
   function setStatus(msg, type = 'info') {
     els.status.textContent = msg;
@@ -142,6 +144,8 @@
     } else {
       els.pdTag.style.display = 'none';
     }
+
+    updateFavoriteButton();
   }
 
   function escapeHTML(s) {
@@ -377,11 +381,119 @@
     if (e.key === 'r' || e.key === 'R') { e.preventDefault(); loadRandom(); }
     if (e.key === 'ArrowLeft') { e.preventDefault(); goPrev(); }
     if (e.key === 'ArrowRight') { e.preventDefault(); goNext(); }
+    if (e.key === 'f' || e.key === 'F') { e.preventDefault(); toggleFavorite(); }
   });
+
+  // Touch gestures
+  let touchStartX = 0;
+  let touchStartY = 0;
+  let touchEndX = 0;
+  let touchEndY = 0;
+  let touchStartTime = 0;
+  const minSwipeDistance = 50; // minimum distance for swipe
+  const maxTapTime = 300; // max time for tap
+  const maxTapMovement = 10; // max movement for tap
+
+  els.img.addEventListener('touchstart', (e) => {
+    touchStartX = e.changedTouches[0].screenX;
+    touchStartY = e.changedTouches[0].screenY;
+    touchStartTime = Date.now();
+  }, { passive: true });
+
+  els.img.addEventListener('touchend', (e) => {
+    touchEndX = e.changedTouches[0].screenX;
+    touchEndY = e.changedTouches[0].screenY;
+    const touchDuration = Date.now() - touchStartTime;
+    handleGesture(touchDuration);
+  }, { passive: true });
+
+  function handleGesture(duration) {
+    const diffX = touchEndX - touchStartX;
+    const diffY = touchEndY - touchStartY;
+    const absDiffX = Math.abs(diffX);
+    const absDiffY = Math.abs(diffY);
+
+    // Check for tap
+    if (duration < maxTapTime && absDiffX < maxTapMovement && absDiffY < maxTapMovement) {
+      loadRandom();
+      return;
+    }
+
+    // Horizontal swipe (left/right navigation)
+    if (absDiffX > absDiffY && absDiffX > minSwipeDistance) {
+      if (diffX > 0) {
+        // Swipe right = previous
+        goPrev();
+      } else {
+        // Swipe left = next
+        goNext();
+      }
+    }
+    // Vertical swipe (favorites)
+    else if (absDiffY > absDiffX && absDiffY > minSwipeDistance) {
+      if (diffY < 0) {
+        // Swipe up = view favorites
+        showFavorites();
+      } else {
+        // Swipe down = add to favorites
+        toggleFavorite();
+      }
+    }
+  }
+
+  // Favorites system
+  function toggleFavorite() {
+    if (hIndex < 0 || !history[hIndex]) return;
+    const current = history[hIndex];
+    const idx = favorites.findIndex(f => f.objectID === current.objectID);
+    if (idx >= 0) {
+      favorites.splice(idx, 1);
+      setStatus('Removed from favorites', 'info');
+    } else {
+      favorites.push(current);
+      setStatus('Added to favorites!', 'info');
+    }
+    localStorage.setItem('met_favorites', JSON.stringify(favorites));
+    updateFavoriteButton();
+  }
+
+  function isFavorite(objectID) {
+    return favorites.some(f => f.objectID === objectID);
+  }
+
+  function updateFavoriteButton() {
+    if (hIndex < 0 || !history[hIndex]) return;
+    const current = history[hIndex];
+    const favorited = isFavorite(current.objectID);
+    const heart = els.favoriteBtn.querySelector('.heart');
+    if (favorited) {
+      els.favoriteBtn.classList.add('favorited');
+      heart.textContent = '♥';
+      els.favoriteBtn.setAttribute('aria-label', 'Remove from favorites (F)');
+      els.favoriteBtn.setAttribute('title', 'Remove from favorites (F or swipe down)');
+    } else {
+      els.favoriteBtn.classList.remove('favorited');
+      heart.textContent = '♡';
+      els.favoriteBtn.setAttribute('aria-label', 'Add to favorites (F)');
+      els.favoriteBtn.setAttribute('title', 'Add to favorites (F or swipe down)');
+    }
+  }
+
+  function showFavorites() {
+    if (favorites.length === 0) {
+      setStatus('No favorites yet. Swipe down to add!', 'info');
+      return;
+    }
+    const random = favorites[Math.floor(Math.random() * favorites.length)];
+    renderArtwork(random);
+    pushHistory(random);
+    setStatus(`Showing favorite (${favorites.length} total)`, 'info');
+  }
 
   els.btn.addEventListener('click', loadRandom);
   els.prev.addEventListener('click', goPrev);
   els.next.addEventListener('click', goNext);
+  els.favoriteBtn.addEventListener('click', toggleFavorite);
 
   // Deep link by ?id=, else random. Also populate departments and pool.
   (async function init(){

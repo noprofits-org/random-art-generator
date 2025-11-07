@@ -2,9 +2,14 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>Random Met Artwork</title>
+  <link rel="manifest" href="./manifest.json">
   <link rel="icon" href="./icons/icon-192x192.png">
+  <link rel="apple-touch-icon" href="./icons/icon-192x192.png">
   <style>
     :root { --primary:#0062cc; --muted:#666; --radius:8px; }
     *{box-sizing:border-box}
@@ -13,24 +18,27 @@
     /* Mobile-first: Full-screen app layout */
     .app-container{position:fixed;top:0;left:0;right:0;bottom:0;display:flex;flex-direction:column;background:#000}
 
-    /* Minimal overlay header */
-    .overlay-header{position:absolute;top:0;left:0;right:0;z-index:100;display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:linear-gradient(to bottom,rgba(0,0,0,0.6),transparent);pointer-events:none}
-    .overlay-header h1{font-size:1rem;margin:0;color:#fff;font-weight:600;text-shadow:0 1px 3px rgba(0,0,0,0.5);pointer-events:auto}
-    .refresh-btn{pointer-events:auto;background:rgba(255,255,255,0.2);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);color:#fff;border:1px solid rgba(255,255,255,0.3);border-radius:50%;padding:10px;width:42px;height:42px;cursor:pointer;font-size:1.1rem;display:flex;align-items:center;justify-content:center;transition:background 0.2s}
-    .refresh-btn:active{background:rgba(255,255,255,0.4);transform:rotate(180deg);transition:transform 0.4s}
+    /* Hamburger menu button */
+    .menu-btn{position:fixed;top:16px;left:16px;z-index:300;background:rgba(255,255,255,0.2);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,0.3);border-radius:8px;padding:10px;width:44px;height:44px;cursor:pointer;display:flex;flex-direction:column;justify-content:space-around;align-items:center;transition:background 0.2s}
+    .menu-btn span{display:block;width:24px;height:2px;background:#fff;border-radius:2px;transition:all 0.3s}
+    .menu-btn:active{background:rgba(255,255,255,0.4)}
+    .menu-btn.open span:nth-child(1){transform:translateY(7px) rotate(45deg)}
+    .menu-btn.open span:nth-child(2){opacity:0}
+    .menu-btn.open span:nth-child(3){transform:translateY(-7px) rotate(-45deg)}
 
     /* Full-screen image container */
     .image-viewport{flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden;position:relative;background:#000}
     .image-viewport img{width:100%;height:100%;object-fit:contain;user-select:none;-webkit-user-select:none}
 
-    /* Bottom drawer */
-    .drawer{position:fixed;bottom:0;left:0;right:0;background:#fff;border-radius:16px 16px 0 0;box-shadow:0 -2px 20px rgba(0,0,0,0.3);transform:translateY(calc(100% - 60px));transition:transform 0.3s cubic-bezier(0.4,0,0.2,1);z-index:200;max-height:85vh;display:flex;flex-direction:column}
-    .drawer.open{transform:translateY(0)}
+    /* Side drawer */
+    .drawer{position:fixed;top:0;left:0;bottom:0;width:320px;max-width:85vw;background:#fff;box-shadow:2px 0 20px rgba(0,0,0,0.3);transform:translateX(-100%);transition:transform 0.3s cubic-bezier(0.4,0,0.2,1);z-index:250;display:flex;flex-direction:column;overflow-y:auto;-webkit-overflow-scrolling:touch}
+    .drawer.open{transform:translateX(0)}
 
-    .drawer-handle{display:flex;justify-content:center;align-items:center;padding:12px;cursor:pointer;user-select:none}
-    .drawer-handle-bar{width:40px;height:4px;background:#ddd;border-radius:2px}
+    /* Drawer overlay */
+    .drawer-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:240;opacity:0;visibility:hidden;transition:opacity 0.3s,visibility 0.3s}
+    .drawer-overlay.visible{opacity:1;visibility:visible}
 
-    .drawer-content{flex:1;overflow-y:auto;padding:0 16px 20px 16px;-webkit-overflow-scrolling:touch}
+    .drawer-content{flex:1;overflow-y:auto;padding:80px 16px 20px 16px;-webkit-overflow-scrolling:touch}
 
     .status{margin:8px 0;color:var(--muted);font-size:0.9rem;text-align:center}
     .status.error{color:#c0392b}
@@ -72,36 +80,35 @@
     @media (min-width: 768px) {
       body{overflow:auto}
       .app-container{position:relative;max-width:900px;margin:0 auto;height:auto;background:#f7f7f7}
-      .overlay-header{position:relative;background:none;padding:20px;justify-content:space-between}
-      .overlay-header h1{color:var(--primary);font-size:1.5rem;text-shadow:none}
-      .refresh-btn{background:var(--primary);border:0;color:#fff}
-      .image-viewport{height:auto;min-height:400px;background:#fafafa;border:1px solid #eee;border-radius:var(--radius);margin:0 20px}
+      .menu-btn{display:none}
+      .image-viewport{height:auto;min-height:400px;background:#fafafa;border:1px solid #eee;border-radius:var(--radius);margin:20px 20px 0 20px}
       .image-viewport img{max-height:70vh;width:auto;height:auto}
-      .drawer{position:relative;transform:none!important;border-radius:12px;margin:20px;box-shadow:0 2px 10px rgba(0,0,0,0.06);max-height:none}
-      .drawer-handle{display:none}
-      .drawer-content{padding:16px}
+      .drawer{position:relative;transform:none!important;border-radius:12px;margin:20px;box-shadow:0 2px 10px rgba(0,0,0,0.06);max-height:none;width:auto;max-width:none}
+      .drawer-overlay{display:none}
+      .drawer-content{padding:16px 16px 20px 16px}
       .action-bar button{flex:0 1 auto}
     }
   </style>
 </head>
 <body>
   <div class="app-container">
-    <!-- Overlay header with refresh -->
-    <div class="overlay-header">
-      <h1>Random Met Artwork</h1>
-      <button id="refreshBtn" class="refresh-btn" aria-label="Load random artwork" title="Refresh">🎲</button>
-    </div>
+    <!-- Hamburger menu button -->
+    <button id="menuBtn" class="menu-btn" aria-label="Open menu" title="Menu">
+      <span></span>
+      <span></span>
+      <span></span>
+    </button>
 
     <!-- Full-screen image -->
     <div class="image-viewport">
       <img id="artImg" alt="Artwork" />
     </div>
 
-    <!-- Bottom drawer -->
+    <!-- Drawer overlay -->
+    <div id="drawerOverlay" class="drawer-overlay"></div>
+
+    <!-- Side drawer -->
     <div id="drawer" class="drawer">
-      <div class="drawer-handle" id="drawerHandle">
-        <div class="drawer-handle-bar"></div>
-      </div>
 
       <div class="drawer-content">
         <div id="status" class="status">Ready</div>
@@ -134,7 +141,7 @@
         </div>
 
         <div class="gesture-hint">
-          💡 Tap image for random • Swipe ← → to navigate • Swipe drawer handle to open/close
+          💡 Tap image for random • Swipe ← → to navigate
         </div>
 
         <footer>

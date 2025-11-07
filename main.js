@@ -21,9 +21,9 @@
     shareBtn: document.getElementById('shareBtn'),
     copyBtn: document.getElementById('copyBtn'),
     favoriteBtn: document.getElementById('favoriteBtn'),
-    refreshBtn: document.getElementById('refreshBtn'),
     drawer: document.getElementById('drawer'),
-    drawerHandle: document.getElementById('drawerHandle'),
+    drawerOverlay: document.getElementById('drawerOverlay'),
+    menuBtn: document.getElementById('menuBtn'),
   };
 
   // In-memory state
@@ -52,11 +52,15 @@
   function openDrawer() {
     drawerOpen = true;
     els.drawer.classList.add('open');
+    els.drawerOverlay.classList.add('visible');
+    els.menuBtn.classList.add('open');
   }
 
   function closeDrawer() {
     drawerOpen = false;
     els.drawer.classList.remove('open');
+    els.drawerOverlay.classList.remove('visible');
+    els.menuBtn.classList.remove('open');
   }
 
   function toggleDrawer() {
@@ -456,46 +460,9 @@
     }
   }
 
-  // Drawer handle gestures
-  let drawerTouchStartY = 0;
-  let drawerTouchEndY = 0;
-
-  els.drawerHandle.addEventListener('touchstart', (e) => {
-    drawerTouchStartY = e.changedTouches[0].clientY;
-  }, { passive: true });
-
-  els.drawerHandle.addEventListener('touchmove', (e) => {
-    drawerTouchEndY = e.changedTouches[0].clientY;
-    const diff = drawerTouchEndY - drawerTouchStartY;
-
-    // Allow dragging the drawer
-    if (drawerOpen && diff > 0) {
-      // Dragging down when open
-      const translate = Math.min(diff, 300);
-      els.drawer.style.transform = `translateY(${translate}px)`;
-    } else if (!drawerOpen && diff < 0) {
-      // Dragging up when closed
-      const currentOffset = window.innerHeight * 0.85 - 60;
-      const translate = Math.max(currentOffset + diff, 0);
-      els.drawer.style.transform = `translateY(calc(100% - 60px - ${Math.abs(diff)}px))`;
-    }
-  }, { passive: true });
-
-  els.drawerHandle.addEventListener('touchend', () => {
-    const diff = drawerTouchEndY - drawerTouchStartY;
-    els.drawer.style.transform = ''; // Reset inline transform
-
-    if (Math.abs(diff) > 50) {
-      if (diff > 0 && drawerOpen) {
-        closeDrawer();
-      } else if (diff < 0 && !drawerOpen) {
-        openDrawer();
-      }
-    }
-  }, { passive: true });
-
-  // Drawer handle click/tap
-  els.drawerHandle.addEventListener('click', toggleDrawer);
+  // Menu button and overlay handlers
+  els.menuBtn.addEventListener('click', toggleDrawer);
+  els.drawerOverlay.addEventListener('click', closeDrawer);
 
   // Favorites system
   function toggleFavorite() {
@@ -550,7 +517,6 @@
   els.prev.addEventListener('click', goPrev);
   els.next.addEventListener('click', goNext);
   els.favoriteBtn.addEventListener('click', toggleFavorite);
-  els.refreshBtn.addEventListener('click', loadRandom);
 
   // Deep link by ?id=, else random. Also populate departments and pool.
   (async function init(){

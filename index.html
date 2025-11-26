@@ -96,18 +96,24 @@
 
     footer{margin-top:16px;text-align:center;color:#999;font-size:0.75rem;line-height:1.4;padding:8px 0}
 
-    /* Tablet/Desktop: Traditional layout */
+    /* Tablet/Desktop: Side-by-side panel layout */
     @media (min-width: 768px) {
-      body{overflow:auto}
-      .app-container{position:relative;max-width:900px;margin:0 auto;height:auto;background:#f7f7f7}
+      html,body{overflow:hidden}
+      .app-container{position:fixed;top:0;left:0;right:0;bottom:0;flex-direction:row;background:#1a1a1a;max-width:none;margin:0;height:100vh}
       .menu-btn{display:none}
       .floating-btn{display:none}
-      .image-viewport{height:auto;min-height:400px;background:#fafafa;border:1px solid #eee;border-radius:var(--radius);margin:20px 20px 0 20px}
-      .image-viewport img{max-height:70vh;width:auto;height:auto}
-      .drawer{position:relative;transform:none!important;border-radius:12px;margin:20px;box-shadow:0 2px 10px rgba(0,0,0,0.06);max-height:none;width:auto;max-width:none}
+
+      /* Left panel - controls */
+      .drawer{position:relative;transform:none!important;width:340px;min-width:340px;max-width:340px;height:100vh;border-radius:0;margin:0;box-shadow:none;border-right:1px solid #333;background:#fff;z-index:1;order:-1}
       .drawer-overlay{display:none}
-      .drawer-content{padding:16px 16px 20px 16px}
+      .drawer-content{padding:20px;height:100%;overflow-y:auto}
+
+      /* Right panel - image (maximized) */
+      .image-viewport{flex:1;height:100vh;min-height:100vh;background:#000;border:none;border-radius:0;margin:0;order:1}
+      .image-viewport img{width:100%;height:100%;max-height:100vh;object-fit:contain}
+
       .action-bar button{flex:0 1 auto}
+      .gesture-hint{display:none}
     }
   </style>
 </head>

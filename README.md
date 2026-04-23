@@ -4,14 +4,14 @@ A minimal web page that displays a random artwork from the Metropolitan Museum o
 
 ## Features
 
-- 🎨 **Random Artwork Discovery** - Explore random pieces from the Met's vast collection
-- ❤️ **Favorites System** - Save your favorite artworks for later viewing
-- 📱 **Mobile-First Design** - Responsive design that works beautifully on all devices
-- 🌐 **Offline Support** - View cached artworks even without internet connection
-- ♿ **Accessibility** - Full keyboard navigation, screen reader support, and ARIA labels
-- 🎯 **PWA Features** - Install as app, splash screens, share target, and more
-- 🚀 **Performance** - Progressive image loading, skeleton screens, and optimized caching
-- 🎨 **Polished UX** - Smooth animations, contextual tips, and professional design
+- **Random Artwork Discovery** - Explore random pieces from the Met's collection
+- **Favorites** - Save favorite artworks to local storage
+- **Filter by Department** - Narrow results to a specific Met department
+- **Deep Linking** - Share a specific artwork via `?id=` in the URL
+- **Responsive Layout** - Immersive mobile drawer; side-by-side panel on desktop
+- **Touch Gestures** - Tap for a new random artwork, swipe ← / → to navigate history
+- **Keyboard Shortcuts** - `R` random, `←` / `→` history, `F` favorite, `Esc` close drawer
+- **Progressive Image Loading** - Small thumbnail loads first, full-res swaps in
 
 ## Quick Start
 
@@ -47,22 +47,7 @@ random-art-generator/
 
 ## Development
 
-### Debug Mode
-
-Enable debug logging by setting `DEBUG_MODE: true` in `config.js`:
-
-```javascript
-DEBUG_MODE: true, // Set to false for production
-```
-
-### Building for Production
-
-1. Run the build script:
-   ```bash
-   ./build.sh
-   ```
-
-2. The production files will be in the `build/` directory
+There is no build step — edit `index.html` / `main.js` and reload. Serve over `http://` during development if you need `fetch` to hit the Met API without CORS-proxy fallback.
 
 ### API Integration
 
@@ -71,25 +56,6 @@ DEBUG_MODE: true, // Set to false for production
 - If a fetch fails due to CORS/network, a simple proxy fallback is used:
   - Primary: `https://cors-proxy-xi-ten.vercel.app/api/proxy?url=`
   - Fallback: `https://corsproxy.io/?` (path mode)
-
-## Features in Detail
-
-### Accessibility
-
-- **Keyboard Navigation**: All features accessible via keyboard
-- **Screen Reader Support**: Proper ARIA labels and live regions
-- **High Contrast Mode**: Automatic detection and support
-- **Reduced Motion**: Respects user's motion preferences
-- **Focus Management**: Clear focus indicators
-
-### Performance Optimizations
-
-- **Progressive Image Loading**: Blur-up technique with thumbnails
-- **Skeleton Screens**: Instead of spinners for better perceived performance
-- **Lazy Loading**: Images in favorites grid load as needed
-- **Smart Caching**: Intelligent cache management with size limits
-
-PWA features and other complexity have been intentionally removed to keep the app focused and minimal.
 
 ## Browser Support
 

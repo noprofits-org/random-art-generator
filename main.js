@@ -9,11 +9,22 @@
   ];
 
   const els = {
+    app: document.querySelector('.app-container'),
     btn: document.getElementById('randomBtn'),
     prev: document.getElementById('prevBtn'),
     next: document.getElementById('nextBtn'),
     status: document.getElementById('status'),
     img: document.getElementById('artImg'),
+    imgHigh: document.getElementById('artImgHigh'),
+    viewport: document.getElementById('imageViewport'),
+    imageLoader: document.getElementById('imageLoader'),
+    imageError: document.getElementById('imageError'),
+    imageErrorBtn: document.getElementById('imageErrorBtn'),
+    prevEdge: document.getElementById('prevEdge'),
+    nextEdge: document.getElementById('nextEdge'),
+    firstHint: document.getElementById('firstHint'),
+    drawerToggle: document.getElementById('drawerToggle'),
+    toast: document.getElementById('toast'),
     info: document.getElementById('info'),
     deptTag: document.getElementById('deptTag'),
     pdTag: document.getElementById('pdTag'),
@@ -37,14 +48,75 @@
   const history = [];   // array of artwork detail objects
   let hIndex = -1;      // pointer into history
   let currentDetailController = null; // AbortController for details
-  let currentImage = null; // current image element load handler cleanup
   let currentDept = ''; // departmentId string or ''
-  let favorites = JSON.parse(localStorage.getItem('met_favorites') || '[]'); // array of artwork objects
+  // Keep favorites small: store only the fields the UI reads.
+  function minimalFavorite(a) {
+    return {
+      objectID: a.objectID,
+      title: a.title,
+      artistDisplayName: a.artistDisplayName,
+      objectDate: a.objectDate,
+      medium: a.medium,
+      department: a.department,
+      primaryImageSmall: a.primaryImageSmall,
+      primaryImage: a.primaryImage,
+      objectURL: a.objectURL,
+      isPublicDomain: a.isPublicDomain,
+    };
+  }
+
+  let favorites = JSON.parse(localStorage.getItem('met_favorites') || '[]').map(minimalFavorite);
+  try { localStorage.setItem('met_favorites', JSON.stringify(favorites)); } catch (_) {}
+
+  function saveFavorites() {
+    try {
+      localStorage.setItem('met_favorites', JSON.stringify(favorites));
+    } catch (_) {
+      setStatus('Storage full — could not save favorite.', 'error');
+    }
+  }
+
   let drawerOpen = false; // drawer state
+  let preloading = false; // single-flight guard for ensurePreload
 
   function setStatus(msg, type = 'info') {
     els.status.textContent = msg;
     els.status.className = `status ${type}`;
+  }
+
+  let toastTimer = null;
+  function showToast(msg) {
+    els.toast.textContent = msg;
+    els.toast.hidden = false;
+    // force reflow so the transition runs even on rapid successive toasts
+    void els.toast.offsetWidth;
+    els.toast.classList.add('visible');
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => {
+      els.toast.classList.remove('visible');
+      toastTimer = setTimeout(() => { els.toast.hidden = true; toastTimer = null; }, 250);
+    }, 1800);
+  }
+
+  let loaderTimer = null;
+  function showLoader(delay = 150) {
+    hideLoader();
+    loaderTimer = setTimeout(() => {
+      els.imageLoader.classList.add('visible');
+      loaderTimer = null;
+    }, delay);
+  }
+  function hideLoader() {
+    if (loaderTimer) { clearTimeout(loaderTimer); loaderTimer = null; }
+    els.imageLoader.classList.remove('visible');
+  }
+
+  function showImageError() {
+    hideLoader();
+    els.imageError.hidden = false;
+  }
+  function hideImageError() {
+    els.imageError.hidden = true;
   }
 
   function proxied(url, proxy) {
@@ -58,6 +130,7 @@
     els.drawer.classList.add('open');
     els.drawerOverlay.classList.add('visible');
     els.menuBtn.classList.add('open');
+    els.menuBtn.setAttribute('aria-expanded', 'true');
   }
 
   function closeDrawer() {
@@ -65,6 +138,7 @@
     els.drawer.classList.remove('open');
     els.drawerOverlay.classList.remove('visible');
     els.menuBtn.classList.remove('open');
+    els.menuBtn.setAttribute('aria-expanded', 'false');
   }
 
   function toggleDrawer() {
@@ -136,29 +210,61 @@
   }
 
   function renderArtwork(a) {
-    // update URL and share state
     updateURLParam('id', a.objectID);
+    hideImageError();
 
-    // progressive image: small then high-res
-    const small = a.primaryImageSmall || a.primaryImage || '';
-    const high = a.primaryImage || '';
-    els.img.alt = a.title || 'Artwork image';
+    const small = safeHttpURL(a.primaryImageSmall || a.primaryImage || '');
+    const high = safeHttpURL(a.primaryImage || '');
+    const alt = a.title || 'Artwork image';
+    els.img.alt = alt;
+
     cleanupImageHandlers();
+
+    // Reset the high-res layer so the crossfade replays for the new artwork.
+    els.imgHigh.classList.remove('loaded');
+    els.imgHigh.removeAttribute('src');
+
+    // Small/thumb first: show spinner if it's slow, hide on load, show error on failure.
+    showLoader();
+    els.img.onload = () => { hideLoader(); };
+    els.img.onerror = () => { hideLoader(); showImageError(); };
     els.img.src = small;
+
     if (high && high !== small) {
-      const temp = new Image();
-      temp.onload = () => { els.img.src = high; };
-      temp.src = high;
-      currentImage = temp;
+      // Use the stacked high-res image so the swap fades in rather than flashing.
+      els.imgHigh.onload = () => { els.imgHigh.classList.add('loaded'); };
+      els.imgHigh.onerror = () => { /* keep the small version visible */ };
+      els.imgHigh.src = high;
     }
 
-    const parts = [];
-    if (a.title) parts.push(`<h2 class="title">${escapeHTML(a.title)}</h2>`);
+    els.info.replaceChildren();
+    if (a.title) {
+      const h = document.createElement('h2');
+      h.className = 'title';
+      h.textContent = a.title;
+      els.info.appendChild(h);
+    }
     const artist = a.artistDisplayName || 'Unknown Artist';
-    parts.push(`<div class="meta">${escapeHTML(artist)}${a.objectDate ? ` • ${escapeHTML(a.objectDate)}` : ''}</div>`);
-    if (a.medium) parts.push(`<div class="meta">${escapeHTML(a.medium)}</div>`);
-    if (a.objectURL) parts.push(`<a class="link" href="${a.objectURL}" target="_blank" rel="noopener">View on The Met</a>`);
-    els.info.innerHTML = parts.join('');
+    const metaArtist = document.createElement('div');
+    metaArtist.className = 'meta';
+    metaArtist.textContent = a.objectDate ? `${artist} • ${a.objectDate}` : artist;
+    els.info.appendChild(metaArtist);
+    if (a.medium) {
+      const metaMedium = document.createElement('div');
+      metaMedium.className = 'meta';
+      metaMedium.textContent = a.medium;
+      els.info.appendChild(metaMedium);
+    }
+    const href = safeHttpURL(a.objectURL);
+    if (href) {
+      const link = document.createElement('a');
+      link.className = 'link';
+      link.href = href;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.textContent = 'View on The Met';
+      els.info.appendChild(link);
+    }
 
     if (a.department) {
       els.deptTag.style.display = '';
@@ -176,10 +282,14 @@
     updateFavoriteButton();
   }
 
-  function escapeHTML(s) {
-    const d = document.createElement('div');
-    d.textContent = String(s ?? '');
-    return d.innerHTML;
+  // Only allow http(s) URLs through to href/src attributes.
+  function safeHttpURL(u) {
+    if (!u) return '';
+    try {
+      const url = new URL(u, window.location.href);
+      if (url.protocol === 'http:' || url.protocol === 'https:') return url.href;
+    } catch (_) {}
+    return '';
   }
 
   async function loadRandom() {
@@ -190,6 +300,8 @@
       const artwork = await getNextArtwork();
 
       if (!artwork) {
+        hideLoader();
+        showImageError();
         setStatus("Couldn't find an image. Try again.", 'error');
         return;
       }
@@ -200,6 +312,8 @@
       setStatus('Loaded.');
     } catch (err) {
       console.error(err);
+      hideLoader();
+      showImageError();
       setStatus('Error loading artwork. Please try again.', 'error');
     } finally {
       els.btn.disabled = false;
@@ -208,9 +322,17 @@
 
   // ---------- Enhancements ----------
   const LS_KEYS = {
-    IMAGE_POOL: 'met_image_ids_pool_v1',
-    IMAGE_POOL_TS: 'met_image_ids_pool_ts_v1',
+    IMAGE_POOL_PREFIX: 'met_image_ids_pool_v2_',
+    IMAGE_POOL_TS_PREFIX: 'met_image_ids_pool_ts_v2_',
   };
+
+  function poolKeys(deptId) {
+    const suffix = deptId || 'all';
+    return {
+      data: LS_KEYS.IMAGE_POOL_PREFIX + suffix,
+      ts: LS_KEYS.IMAGE_POOL_TS_PREFIX + suffix,
+    };
+  }
 
   function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
 
@@ -233,12 +355,12 @@
   }
 
   async function buildImagePool(deptId = '') {
-    // try cache
+    const keys = poolKeys(deptId);
     const now = Date.now();
-    const ts = parseInt(localStorage.getItem(LS_KEYS.IMAGE_POOL_TS) || '0', 10);
-    const cached = localStorage.getItem(LS_KEYS.IMAGE_POOL);
+    const ts = parseInt(localStorage.getItem(keys.ts) || '0', 10);
+    const cached = localStorage.getItem(keys.data);
     const isFresh = now - ts < 6 * 60 * 60 * 1000; // 6 hours
-    if (cached && isFresh && !deptId) {
+    if (cached && isFresh) {
       imageIDs = JSON.parse(cached);
       return imageIDs;
     }
@@ -264,13 +386,12 @@
       if (out.size >= maxCollect) break;
     }
     imageIDs = [...out];
-    if (!deptId) {
-      localStorage.setItem(LS_KEYS.IMAGE_POOL, JSON.stringify(imageIDs));
-      localStorage.setItem(LS_KEYS.IMAGE_POOL_TS, String(Date.now()));
-    }
+    try {
+      localStorage.setItem(keys.data, JSON.stringify(imageIDs));
+      localStorage.setItem(keys.ts, String(Date.now()));
+    } catch (_) { /* quota exceeded — not fatal */ }
     // Fallback: if empty, use full object list
     if (imageIDs.length === 0) {
-      // Fall back to full objects list
       const ids = await ensureObjectIDs();
       imageIDs = ids;
     }
@@ -308,27 +429,40 @@
   }
 
   async function ensurePreload(count = 3) {
-    await ensurePool();
-    while (preloadQueue.length < count) {
-      const id = pickRandom(imageIDs);
-      try {
-        const d = await fetchArtworkDetails(id);
-        if (d && (d.primaryImage || d.primaryImageSmall)) {
-          preloadQueue.push(d);
-        }
-      } catch(_) { /* skip */ }
+    if (preloading) return;
+    preloading = true;
+    try {
+      await ensurePool();
+      let attempts = 0;
+      const maxAttempts = count * 6;
+      while (preloadQueue.length < count && attempts < maxAttempts) {
+        attempts++;
+        const id = pickRandom(imageIDs);
+        try {
+          const d = await fetchArtworkDetails(id);
+          if (d && (d.primaryImage || d.primaryImageSmall)) {
+            preloadQueue.push(d);
+          }
+        } catch(_) { /* skip */ }
+      }
+    } finally {
+      preloading = false;
     }
   }
 
   function cleanupImageHandlers() {
-    if (currentImage) {
-      currentImage.onload = null;
-      currentImage = null;
-    }
+    els.img.onload = null;
+    els.img.onerror = null;
+    els.imgHigh.onload = null;
+    els.imgHigh.onerror = null;
   }
 
   // History management
   function pushHistory(art) {
+    // If this artwork is already the current one, don't duplicate the entry.
+    if (hIndex >= 0 && history[hIndex] && history[hIndex].objectID === art.objectID) {
+      return;
+    }
     // if we're not at end, truncate forward history
     if (hIndex < history.length - 1) history.splice(hIndex + 1);
     history.push(art);
@@ -336,8 +470,12 @@
     updateNavButtons();
   }
   function updateNavButtons() {
-    els.prev.disabled = hIndex <= 0;
-    els.next.disabled = hIndex >= history.length - 1;
+    const atStart = hIndex <= 0;
+    const atEnd = hIndex >= history.length - 1;
+    els.prev.disabled = atStart;
+    els.prevEdge.disabled = atStart;
+    els.next.disabled = atEnd;
+    els.nextEdge.disabled = atEnd;
   }
   function goPrev() {
     if (hIndex > 0) {
@@ -406,6 +544,13 @@
 
   // Keyboard shortcuts
   window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && drawerOpen) { e.preventDefault(); closeDrawer(); return; }
+    // Ignore shortcuts when user is interacting with a form control.
+    const t = e.target;
+    if (t instanceof Element) {
+      const tag = t.tagName;
+      if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' || t.isContentEditable) return;
+    }
     if (e.key === 'r' || e.key === 'R') { e.preventDefault(); loadRandom(); }
     if (e.key === 'ArrowLeft') { e.preventDefault(); goPrev(); }
     if (e.key === 'ArrowRight') { e.preventDefault(); goNext(); }
@@ -475,12 +620,12 @@
     const idx = favorites.findIndex(f => f.objectID === current.objectID);
     if (idx >= 0) {
       favorites.splice(idx, 1);
-      setStatus('Removed from favorites', 'info');
+      showToast('Removed from favorites');
     } else {
-      favorites.push(current);
-      setStatus('Added to favorites!', 'info');
+      favorites.push(minimalFavorite(current));
+      showToast('Added to favorites');
     }
-    localStorage.setItem('met_favorites', JSON.stringify(favorites));
+    saveFavorites();
     updateFavoriteButton();
     renderFavoritesList();
   }
@@ -517,101 +662,165 @@
 
   function renderFavoritesList() {
     els.favoritesCount.textContent = favorites.length;
+    els.favoritesList.replaceChildren();
 
     if (favorites.length === 0) {
-      els.favoritesList.innerHTML = '<div class="favorites-empty">No favorites yet. Tap the heart to add!</div>';
+      const empty = document.createElement('div');
+      empty.className = 'favorites-empty';
+      empty.textContent = 'No favorites yet. Tap the heart to add!';
+      els.favoritesList.appendChild(empty);
       return;
     }
 
-    els.favoritesList.innerHTML = favorites.map((fav, idx) => {
-      const title = escapeHTML(fav.title || 'Untitled');
-      const artist = escapeHTML(fav.artistDisplayName || 'Unknown Artist');
-      const thumb = fav.primaryImageSmall || fav.primaryImage || '';
-      return `
-        <div class="favorite-item" data-fav-index="${idx}">
-          ${thumb ? `<img src="${thumb}" alt="" class="favorite-item-thumb">` : '<div class="favorite-item-thumb"></div>'}
-          <div class="favorite-item-info">
-            <div class="favorite-item-title">${title}</div>
-            <div class="favorite-item-artist">${artist}</div>
-          </div>
-          <button class="favorite-item-remove" data-remove-index="${idx}" aria-label="Remove favorite">×</button>
-        </div>
-      `;
-    }).join('');
+    favorites.forEach((fav, idx) => {
+      const item = document.createElement('div');
+      item.className = 'favorite-item';
+      item.dataset.favIndex = String(idx);
 
-    // Add click handlers for loading favorites
-    els.favoritesList.querySelectorAll('.favorite-item').forEach(item => {
+      const thumb = safeHttpURL(fav.primaryImageSmall || fav.primaryImage || '');
+      if (thumb) {
+        const img = document.createElement('img');
+        img.src = thumb;
+        img.alt = '';
+        img.className = 'favorite-item-thumb';
+        img.loading = 'lazy';
+        item.appendChild(img);
+      } else {
+        const placeholder = document.createElement('div');
+        placeholder.className = 'favorite-item-thumb';
+        item.appendChild(placeholder);
+      }
+
+      const info = document.createElement('div');
+      info.className = 'favorite-item-info';
+      const title = document.createElement('div');
+      title.className = 'favorite-item-title';
+      title.textContent = fav.title || 'Untitled';
+      const artist = document.createElement('div');
+      artist.className = 'favorite-item-artist';
+      artist.textContent = fav.artistDisplayName || 'Unknown Artist';
+      info.appendChild(title);
+      info.appendChild(artist);
+      item.appendChild(info);
+
+      const remove = document.createElement('button');
+      remove.className = 'favorite-item-remove';
+      remove.type = 'button';
+      remove.dataset.removeIndex = String(idx);
+      remove.setAttribute('aria-label', 'Remove favorite');
+      remove.textContent = '×';
+      item.appendChild(remove);
+
       item.addEventListener('click', (e) => {
-        if (e.target.classList.contains('favorite-item-remove')) {
-          // Handle remove button click
-          const removeIdx = parseInt(e.target.getAttribute('data-remove-index'), 10);
+        const target = e.target;
+        if (target instanceof Element && target.closest('.favorite-item-remove')) {
+          const removeIdx = parseInt(target.closest('.favorite-item-remove').dataset.removeIndex, 10);
           favorites.splice(removeIdx, 1);
-          localStorage.setItem('met_favorites', JSON.stringify(favorites));
+          saveFavorites();
           renderFavoritesList();
           updateFavoriteButton();
-          setStatus('Removed from favorites', 'info');
-        } else {
-          // Load the favorite
-          const favIdx = parseInt(item.getAttribute('data-fav-index'), 10);
-          const fav = favorites[favIdx];
-          if (fav) {
-            renderArtwork(fav);
-            pushHistory(fav);
-            setStatus('Loaded favorite', 'info');
-            closeDrawer();
-          }
+          showToast('Removed from favorites');
+          return;
+        }
+        const favIdx = parseInt(item.dataset.favIndex, 10);
+        const fav = favorites[favIdx];
+        if (fav) {
+          renderArtwork(fav);
+          pushHistory(fav);
+          setStatus('Loaded favorite', 'info');
+          closeDrawer();
         }
       });
+
+      els.favoritesList.appendChild(item);
     });
   }
 
-  function downloadCurrentImage() {
+  function downloadFilename(a) {
+    const slug = (s) => String(s || '').toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
+    const parts = [slug(a.artistDisplayName), slug(a.title), a.objectID].filter(Boolean);
+    return (parts.length ? parts.join('-') : `met-artwork-${a.objectID}`) + '.jpg';
+  }
+
+  async function downloadCurrentImage() {
     if (hIndex < 0 || !history[hIndex]) {
       setStatus('No image to download', 'error');
       return;
     }
-
     const current = history[hIndex];
-    const imageUrl = current.primaryImage || current.primaryImageSmall;
-
+    const imageUrl = safeHttpURL(current.primaryImage || current.primaryImageSmall || '');
     if (!imageUrl) {
       setStatus('No image available for download', 'error');
       return;
     }
 
-    // Create a temporary link and trigger download
-    const link = document.createElement('a');
-    const filename = `met-artwork-${current.objectID}.jpg`;
-    link.href = imageUrl;
-    link.download = filename;
-    link.target = '_blank';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    setStatus('Download started', 'info');
-  }
-
-  function showFavorites() {
-    if (favorites.length === 0) {
-      setStatus('No favorites yet. Tap the heart to add!', 'info');
-      return;
+    setStatus('Downloading…', 'loading');
+    try {
+      const r = await fetch(imageUrl);
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const blob = await r.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = downloadFilename(current);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+      setStatus('Download started', 'info');
+    } catch (_) {
+      // CORS or network failure — fall back to opening the image in a new tab.
+      window.open(imageUrl, '_blank', 'noopener,noreferrer');
+      setStatus('Opened image in a new tab.', 'info');
     }
-    const random = favorites[Math.floor(Math.random() * favorites.length)];
-    renderArtwork(random);
-    pushHistory(random);
-    setStatus(`Showing favorite (${favorites.length} total)`, 'info');
   }
 
   els.btn.addEventListener('click', loadRandom);
   els.prev.addEventListener('click', goPrev);
   els.next.addEventListener('click', goNext);
+  els.prevEdge.addEventListener('click', goPrev);
+  els.nextEdge.addEventListener('click', goNext);
   els.favoriteBtn.addEventListener('click', toggleFavorite);
   els.floatingFavoriteBtn.addEventListener('click', toggleFavorite);
   els.floatingDownloadBtn.addEventListener('click', downloadCurrentImage);
+  els.imageErrorBtn.addEventListener('click', () => { hideImageError(); loadRandom(); });
+
+  // Desktop drawer collapse toggle (button only appears on desktop via CSS).
+  const DRAWER_COLLAPSED_KEY = 'met_drawer_collapsed';
+  function setDrawerCollapsed(collapsed) {
+    els.app.classList.toggle('drawer-collapsed', collapsed);
+    els.drawerToggle.setAttribute('aria-label', collapsed ? 'Show sidebar' : 'Hide sidebar');
+    els.drawerToggle.setAttribute('title', collapsed ? 'Show sidebar' : 'Hide sidebar');
+    try { localStorage.setItem(DRAWER_COLLAPSED_KEY, collapsed ? '1' : '0'); } catch (_) {}
+  }
+  els.drawerToggle.addEventListener('click', () => {
+    setDrawerCollapsed(!els.app.classList.contains('drawer-collapsed'));
+  });
+  if (localStorage.getItem(DRAWER_COLLAPSED_KEY) === '1') setDrawerCollapsed(true);
+
+  // One-time first-run hint on mobile viewports.
+  const FIRST_HINT_KEY = 'met_first_hint_seen_v1';
+  function maybeShowFirstHint() {
+    if (localStorage.getItem(FIRST_HINT_KEY) === '1') return;
+    if (window.matchMedia('(min-width: 768px)').matches) return;
+    els.firstHint.hidden = false;
+    const dismiss = () => {
+      els.firstHint.hidden = true;
+      try { localStorage.setItem(FIRST_HINT_KEY, '1'); } catch (_) {}
+      window.removeEventListener('touchstart', dismiss, true);
+      clearTimeout(hintTimer);
+    };
+    const hintTimer = setTimeout(dismiss, 4500);
+    window.addEventListener('touchstart', dismiss, { passive: true, capture: true, once: true });
+  }
 
   // Deep link by ?id=, else random. Also populate departments and pool.
   (async function init(){
     renderFavoritesList(); // Initialize favorites list
+    updateNavButtons();
+    maybeShowFirstHint();
+    showLoader(0); // visible immediately while the pool builds
     await loadDepartments();
     await ensurePool();
     const idParam = readParam('id');

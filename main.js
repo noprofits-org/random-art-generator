@@ -743,37 +743,72 @@
     return (parts.length ? parts.join('-') : `met-artwork-${a.objectID}`) + '.jpg';
   }
 
-  async function downloadCurrentImage() {
+  // True when the browser can share image files via the native share sheet —
+  // on iOS/Android this is the path that offers "Save Image" into Photos.
+  function canShareImageFile() {
+    if (typeof navigator.share !== 'function' || typeof navigator.canShare !== 'function') return false;
+    try {
+      const probe = new File(['x'], 'probe.jpg', { type: 'image/jpeg' });
+      return navigator.canShare({ files: [probe] });
+    } catch (_) {
+      return false;
+    }
+  }
+
+  async function saveCurrentImage() {
     if (hIndex < 0 || !history[hIndex]) {
-      setStatus('No image to download', 'error');
+      setStatus('No image to save', 'error');
       return;
     }
     const current = history[hIndex];
     const imageUrl = safeHttpURL(current.primaryImage || current.primaryImageSmall || '');
     if (!imageUrl) {
-      setStatus('No image available for download', 'error');
+      setStatus('No image available', 'error');
       return;
     }
 
-    setStatus('Downloading…', 'loading');
+    setStatus('Preparing image…', 'loading');
+
+    let blob;
     try {
       const r = await fetch(imageUrl);
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      const blob = await r.blob();
-      const blobUrl = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = blobUrl;
-      link.download = downloadFilename(current);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
-      setStatus('Download started', 'info');
+      blob = await r.blob();
     } catch (_) {
-      // CORS or network failure — fall back to opening the image in a new tab.
+      // CORS or network failure — we can't build a File, so just open the image.
       window.open(imageUrl, '_blank', 'noopener,noreferrer');
       setStatus('Opened image in a new tab.', 'info');
+      return;
     }
+
+    const filename = downloadFilename(current);
+
+    if (canShareImageFile()) {
+      const file = new File([blob], filename, { type: blob.type || 'image/jpeg' });
+      if (navigator.canShare({ files: [file] })) {
+        try {
+          await navigator.share({ files: [file], title: current.title || 'Met Artwork' });
+          setStatus('Shared.', 'info');
+          return;
+        } catch (err) {
+          if (err && err.name === 'AbortError') {
+            setStatus('Ready.', 'info');
+            return;
+          }
+          // Unexpected share failure — fall through to the download path.
+        }
+      }
+    }
+
+    const blobUrl = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = blobUrl;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+    setStatus('Download started', 'info');
   }
 
   els.btn.addEventListener('click', loadRandom);
@@ -783,7 +818,11 @@
   els.nextEdge.addEventListener('click', goNext);
   els.favoriteBtn.addEventListener('click', toggleFavorite);
   els.floatingFavoriteBtn.addEventListener('click', toggleFavorite);
-  els.floatingDownloadBtn.addEventListener('click', downloadCurrentImage);
+  els.floatingDownloadBtn.addEventListener('click', saveCurrentImage);
+  if (canShareImageFile()) {
+    els.floatingDownloadBtn.setAttribute('aria-label', 'Save to Photos');
+    els.floatingDownloadBtn.setAttribute('title', 'Save to Photos');
+  }
   els.imageErrorBtn.addEventListener('click', () => { hideImageError(); loadRandom(); });
 
   // Desktop drawer collapse toggle (button only appears on desktop via CSS).

@@ -41,6 +41,7 @@
   let currentDept = ''; // departmentId string or ''
   let favorites = JSON.parse(localStorage.getItem('met_favorites') || '[]'); // array of artwork objects
   let drawerOpen = false; // drawer state
+  let preloading = false; // single-flight guard for ensurePreload
 
   function setStatus(msg, type = 'info') {
     els.status.textContent = msg;
@@ -58,6 +59,7 @@
     els.drawer.classList.add('open');
     els.drawerOverlay.classList.add('visible');
     els.menuBtn.classList.add('open');
+    els.menuBtn.setAttribute('aria-expanded', 'true');
   }
 
   function closeDrawer() {
@@ -65,6 +67,7 @@
     els.drawer.classList.remove('open');
     els.drawerOverlay.classList.remove('visible');
     els.menuBtn.classList.remove('open');
+    els.menuBtn.setAttribute('aria-expanded', 'false');
   }
 
   function toggleDrawer() {
@@ -140,8 +143,8 @@
     updateURLParam('id', a.objectID);
 
     // progressive image: small then high-res
-    const small = a.primaryImageSmall || a.primaryImage || '';
-    const high = a.primaryImage || '';
+    const small = safeHttpURL(a.primaryImageSmall || a.primaryImage || '');
+    const high = safeHttpURL(a.primaryImage || '');
     els.img.alt = a.title || 'Artwork image';
     cleanupImageHandlers();
     els.img.src = small;
@@ -152,13 +155,34 @@
       currentImage = temp;
     }
 
-    const parts = [];
-    if (a.title) parts.push(`<h2 class="title">${escapeHTML(a.title)}</h2>`);
+    els.info.replaceChildren();
+    if (a.title) {
+      const h = document.createElement('h2');
+      h.className = 'title';
+      h.textContent = a.title;
+      els.info.appendChild(h);
+    }
     const artist = a.artistDisplayName || 'Unknown Artist';
-    parts.push(`<div class="meta">${escapeHTML(artist)}${a.objectDate ? ` • ${escapeHTML(a.objectDate)}` : ''}</div>`);
-    if (a.medium) parts.push(`<div class="meta">${escapeHTML(a.medium)}</div>`);
-    if (a.objectURL) parts.push(`<a class="link" href="${a.objectURL}" target="_blank" rel="noopener">View on The Met</a>`);
-    els.info.innerHTML = parts.join('');
+    const metaArtist = document.createElement('div');
+    metaArtist.className = 'meta';
+    metaArtist.textContent = a.objectDate ? `${artist} • ${a.objectDate}` : artist;
+    els.info.appendChild(metaArtist);
+    if (a.medium) {
+      const metaMedium = document.createElement('div');
+      metaMedium.className = 'meta';
+      metaMedium.textContent = a.medium;
+      els.info.appendChild(metaMedium);
+    }
+    const href = safeHttpURL(a.objectURL);
+    if (href) {
+      const link = document.createElement('a');
+      link.className = 'link';
+      link.href = href;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.textContent = 'View on The Met';
+      els.info.appendChild(link);
+    }
 
     if (a.department) {
       els.deptTag.style.display = '';
@@ -176,10 +200,14 @@
     updateFavoriteButton();
   }
 
-  function escapeHTML(s) {
-    const d = document.createElement('div');
-    d.textContent = String(s ?? '');
-    return d.innerHTML;
+  // Only allow http(s) URLs through to href/src attributes.
+  function safeHttpURL(u) {
+    if (!u) return '';
+    try {
+      const url = new URL(u, window.location.href);
+      if (url.protocol === 'http:' || url.protocol === 'https:') return url.href;
+    } catch (_) {}
+    return '';
   }
 
   async function loadRandom() {
@@ -308,15 +336,24 @@
   }
 
   async function ensurePreload(count = 3) {
-    await ensurePool();
-    while (preloadQueue.length < count) {
-      const id = pickRandom(imageIDs);
-      try {
-        const d = await fetchArtworkDetails(id);
-        if (d && (d.primaryImage || d.primaryImageSmall)) {
-          preloadQueue.push(d);
-        }
-      } catch(_) { /* skip */ }
+    if (preloading) return;
+    preloading = true;
+    try {
+      await ensurePool();
+      let attempts = 0;
+      const maxAttempts = count * 6;
+      while (preloadQueue.length < count && attempts < maxAttempts) {
+        attempts++;
+        const id = pickRandom(imageIDs);
+        try {
+          const d = await fetchArtworkDetails(id);
+          if (d && (d.primaryImage || d.primaryImageSmall)) {
+            preloadQueue.push(d);
+          }
+        } catch(_) { /* skip */ }
+      }
+    } finally {
+      preloading = false;
     }
   }
 
@@ -406,6 +443,13 @@
 
   // Keyboard shortcuts
   window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && drawerOpen) { e.preventDefault(); closeDrawer(); return; }
+    // Ignore shortcuts when user is interacting with a form control.
+    const t = e.target;
+    if (t instanceof Element) {
+      const tag = t.tagName;
+      if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' || t.isContentEditable) return;
+    }
     if (e.key === 'r' || e.key === 'R') { e.preventDefault(); loadRandom(); }
     if (e.key === 'ArrowLeft') { e.preventDefault(); goPrev(); }
     if (e.key === 'ArrowRight') { e.preventDefault(); goNext(); }
@@ -517,51 +561,77 @@
 
   function renderFavoritesList() {
     els.favoritesCount.textContent = favorites.length;
+    els.favoritesList.replaceChildren();
 
     if (favorites.length === 0) {
-      els.favoritesList.innerHTML = '<div class="favorites-empty">No favorites yet. Tap the heart to add!</div>';
+      const empty = document.createElement('div');
+      empty.className = 'favorites-empty';
+      empty.textContent = 'No favorites yet. Tap the heart to add!';
+      els.favoritesList.appendChild(empty);
       return;
     }
 
-    els.favoritesList.innerHTML = favorites.map((fav, idx) => {
-      const title = escapeHTML(fav.title || 'Untitled');
-      const artist = escapeHTML(fav.artistDisplayName || 'Unknown Artist');
-      const thumb = fav.primaryImageSmall || fav.primaryImage || '';
-      return `
-        <div class="favorite-item" data-fav-index="${idx}">
-          ${thumb ? `<img src="${thumb}" alt="" class="favorite-item-thumb">` : '<div class="favorite-item-thumb"></div>'}
-          <div class="favorite-item-info">
-            <div class="favorite-item-title">${title}</div>
-            <div class="favorite-item-artist">${artist}</div>
-          </div>
-          <button class="favorite-item-remove" data-remove-index="${idx}" aria-label="Remove favorite">×</button>
-        </div>
-      `;
-    }).join('');
+    favorites.forEach((fav, idx) => {
+      const item = document.createElement('div');
+      item.className = 'favorite-item';
+      item.dataset.favIndex = String(idx);
 
-    // Add click handlers for loading favorites
-    els.favoritesList.querySelectorAll('.favorite-item').forEach(item => {
+      const thumb = safeHttpURL(fav.primaryImageSmall || fav.primaryImage || '');
+      if (thumb) {
+        const img = document.createElement('img');
+        img.src = thumb;
+        img.alt = '';
+        img.className = 'favorite-item-thumb';
+        img.loading = 'lazy';
+        item.appendChild(img);
+      } else {
+        const placeholder = document.createElement('div');
+        placeholder.className = 'favorite-item-thumb';
+        item.appendChild(placeholder);
+      }
+
+      const info = document.createElement('div');
+      info.className = 'favorite-item-info';
+      const title = document.createElement('div');
+      title.className = 'favorite-item-title';
+      title.textContent = fav.title || 'Untitled';
+      const artist = document.createElement('div');
+      artist.className = 'favorite-item-artist';
+      artist.textContent = fav.artistDisplayName || 'Unknown Artist';
+      info.appendChild(title);
+      info.appendChild(artist);
+      item.appendChild(info);
+
+      const remove = document.createElement('button');
+      remove.className = 'favorite-item-remove';
+      remove.type = 'button';
+      remove.dataset.removeIndex = String(idx);
+      remove.setAttribute('aria-label', 'Remove favorite');
+      remove.textContent = '×';
+      item.appendChild(remove);
+
       item.addEventListener('click', (e) => {
-        if (e.target.classList.contains('favorite-item-remove')) {
-          // Handle remove button click
-          const removeIdx = parseInt(e.target.getAttribute('data-remove-index'), 10);
+        const target = e.target;
+        if (target instanceof Element && target.closest('.favorite-item-remove')) {
+          const removeIdx = parseInt(target.closest('.favorite-item-remove').dataset.removeIndex, 10);
           favorites.splice(removeIdx, 1);
           localStorage.setItem('met_favorites', JSON.stringify(favorites));
           renderFavoritesList();
           updateFavoriteButton();
           setStatus('Removed from favorites', 'info');
-        } else {
-          // Load the favorite
-          const favIdx = parseInt(item.getAttribute('data-fav-index'), 10);
-          const fav = favorites[favIdx];
-          if (fav) {
-            renderArtwork(fav);
-            pushHistory(fav);
-            setStatus('Loaded favorite', 'info');
-            closeDrawer();
-          }
+          return;
+        }
+        const favIdx = parseInt(item.dataset.favIndex, 10);
+        const fav = favorites[favIdx];
+        if (fav) {
+          renderArtwork(fav);
+          pushHistory(fav);
+          setStatus('Loaded favorite', 'info');
+          closeDrawer();
         }
       });
+
+      els.favoritesList.appendChild(item);
     });
   }
 

@@ -120,7 +120,7 @@
 <body>
   <div class="app-container">
     <!-- Hamburger menu button -->
-    <button id="menuBtn" class="menu-btn" aria-label="Open menu" title="Menu">
+    <button id="menuBtn" class="menu-btn" type="button" aria-label="Open menu" title="Menu" aria-controls="drawer" aria-expanded="false">
       <span></span>
       <span></span>
       <span></span>
@@ -143,10 +143,10 @@
     <div id="drawerOverlay" class="drawer-overlay"></div>
 
     <!-- Side drawer -->
-    <div id="drawer" class="drawer">
+    <div id="drawer" class="drawer" role="dialog" aria-modal="true" aria-label="Menu and artwork details">
 
       <div class="drawer-content">
-        <div id="status" class="status">Ready</div>
+        <div id="status" class="status" role="status" aria-live="polite">Ready</div>
 
         <div class="controls">
           <select id="deptSelect" title="Filter by department">

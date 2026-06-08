@@ -6,11 +6,12 @@ A minimal web page that displays a random artwork from the Metropolitan Museum o
 
 - **Random Artwork Discovery** - Explore random pieces from the Met's collection
 - **Favorites** - Save favorite artworks to local storage
+- **Save Image** - Download the artwork (or save to Photos via the share sheet on mobile), with automatic CORS-proxy fallback so it works even when the image server blocks direct downloads
 - **Filter by Department** - Narrow results to a specific Met department
 - **Deep Linking** - Share a specific artwork via `?id=` in the URL
 - **Responsive Layout** - Immersive mobile drawer; side-by-side panel on desktop
 - **Touch Gestures** - Tap for a new random artwork, swipe ← / → to navigate history
-- **Keyboard Shortcuts** - `R` random, `←` / `→` history, `F` favorite, `Esc` close drawer
+- **Keyboard Shortcuts** - `R` random, `←` / `→` history, `F` favorite, `S` save image, `Esc` close drawer
 - **Progressive Image Loading** - Small thumbnail loads first, full-res swaps in
 
 ## Quick Start

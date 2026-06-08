@@ -38,6 +38,10 @@
     menuBtn: document.getElementById('menuBtn'),
     floatingFavoriteBtn: document.getElementById('floatingFavoriteBtn'),
     floatingDownloadBtn: document.getElementById('floatingDownloadBtn'),
+    caption: document.getElementById('caption'),
+    captionTitle: document.getElementById('captionTitle'),
+    captionMeta: document.getElementById('captionMeta'),
+    captionToggle: document.getElementById('captionToggle'),
     favoritesList: document.getElementById('favoritesList'),
     favoritesCount: document.getElementById('favoritesCount'),
   };
@@ -210,6 +214,33 @@
     return arr[Math.floor(Math.random() * arr.length)];
   }
 
+  // On-image caption (title overlay). The dismissed state is a sticky
+  // preference so it carries across artworks once the user hides it.
+  let captionDismissed = localStorage.getItem('met_caption_hidden') === '1';
+
+  function updateCaption(a) {
+    const title = a.title || 'Untitled';
+    const artist = a.artistDisplayName || 'Unknown Artist';
+    els.captionTitle.textContent = title;
+    els.captionMeta.textContent = a.objectDate ? `${artist} • ${a.objectDate}` : artist;
+    els.caption.setAttribute('aria-label', `${title}. Tap to hide title.`);
+    els.caption.hidden = false;
+    applyCaptionState();
+  }
+
+  function applyCaptionState() {
+    if (els.caption.hidden) return;
+    els.caption.classList.toggle('dismissed', captionDismissed);
+    els.captionToggle.classList.toggle('visible', captionDismissed);
+  }
+
+  function setCaptionDismissed(dismissed) {
+    captionDismissed = dismissed;
+    try { localStorage.setItem('met_caption_hidden', dismissed ? '1' : '0'); } catch (_) {}
+    applyCaptionState();
+    if (!dismissed) els.caption.focus();
+  }
+
   function renderArtwork(a) {
     updateURLParam('id', a.objectID);
     hideImageError();
@@ -237,6 +268,8 @@
       els.imgHigh.onerror = () => { /* keep the small version visible */ };
       els.imgHigh.src = high;
     }
+
+    updateCaption(a);
 
     els.info.replaceChildren();
     if (a.title) {
@@ -308,6 +341,7 @@
       }
 
       renderArtwork(artwork);
+      animateStack('fade');
       pushHistory(artwork);
       void ensurePreload();
       setStatus('Loaded.');
@@ -482,18 +516,23 @@
     if (hIndex > 0) {
       hIndex--;
       renderArtwork(history[hIndex]);
+      animateStack('prev');
       setStatus('Loaded from history.');
       updateNavButtons();
+    } else {
+      springBack(); // nothing earlier — settle a stray swipe back to center
     }
   }
   function goNext() {
     if (hIndex < history.length - 1) {
       hIndex++;
       renderArtwork(history[hIndex]);
+      animateStack('next');
       setStatus('Loaded from history.');
       updateNavButtons();
     } else {
       // end of history → load fresh
+      springBack();
       loadRandom();
     }
   }
@@ -557,63 +596,103 @@
     if (e.key === 'ArrowRight') { e.preventDefault(); goNext(); }
     if (e.key === 'f' || e.key === 'F') { e.preventDefault(); toggleFavorite(); }
     if (e.key === 's' || e.key === 'S') { e.preventDefault(); saveCurrentImage(); }
+    if (e.key === 't' || e.key === 'T') { e.preventDefault(); setCaptionDismissed(!captionDismissed); }
   });
 
-  // Touch gestures
+  // Touch gestures — live finger-tracking swipe with a settle/spring animation.
+  const stack = els.img.parentElement; // .image-stack (holds both image layers)
+  const minSwipeDistance = 50; // minimum distance to commit a swipe
+  const maxTapTime = 300; // max time for a tap
+  const maxTapMovement = 10; // max movement for a tap
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
   let touchStartX = 0;
   let touchStartY = 0;
-  let touchEndX = 0;
-  let touchEndY = 0;
   let touchStartTime = 0;
-  const minSwipeDistance = 50; // minimum distance for swipe
-  const maxTapTime = 300; // max time for tap
-  const maxTapMovement = 10; // max movement for tap
+  let dragging = false;
+  let horizontal = false;
 
-  // Image viewport gestures
+  function setStackTransition(on) {
+    stack.style.transition = (on && !reduceMotion)
+      ? 'transform 0.25s ease, opacity 0.25s ease'
+      : 'none';
+  }
+
+  function springBack() {
+    setStackTransition(true);
+    stack.style.transform = 'translateX(0)';
+    stack.style.opacity = '1';
+  }
+
+  // Slide the freshly-rendered artwork in from the side it came from.
+  function animateStack(dir) {
+    if (reduceMotion) { stack.style.transform = ''; stack.style.opacity = ''; return; }
+    const from = dir === 'next' ? 32 : dir === 'prev' ? -32 : 0;
+    setStackTransition(false);
+    stack.style.transform = `translateX(${from}px)`;
+    stack.style.opacity = dir ? '0.25' : '0.4';
+    void stack.offsetWidth; // force reflow so the transition replays
+    setStackTransition(true);
+    stack.style.transform = 'translateX(0)';
+    stack.style.opacity = '1';
+  }
+
   els.img.parentElement.addEventListener('touchstart', (e) => {
-    touchStartX = e.changedTouches[0].screenX;
-    touchStartY = e.changedTouches[0].screenY;
+    if (e.touches.length > 1) { dragging = false; return; }
+    touchStartX = e.touches[0].screenX;
+    touchStartY = e.touches[0].screenY;
     touchStartTime = Date.now();
+    dragging = true;
+    horizontal = false;
+    setStackTransition(false);
+  }, { passive: true });
+
+  els.img.parentElement.addEventListener('touchmove', (e) => {
+    if (!dragging || drawerOpen || e.touches.length > 1) return;
+    const dx = e.touches[0].screenX - touchStartX;
+    const dy = e.touches[0].screenY - touchStartY;
+    if (!horizontal && Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 8) horizontal = true;
+    if (horizontal) {
+      // Add resistance when there's nowhere to go in that direction.
+      const atEdge = (dx > 0 && hIndex <= 0);
+      const eff = dx * (atEdge ? 0.25 : 0.85);
+      stack.style.transform = `translateX(${eff}px)`;
+      stack.style.opacity = String(Math.max(0.6, 1 - Math.abs(eff) / 700));
+    }
   }, { passive: true });
 
   els.img.parentElement.addEventListener('touchend', (e) => {
-    touchEndX = e.changedTouches[0].screenX;
-    touchEndY = e.changedTouches[0].screenY;
-    const touchDuration = Date.now() - touchStartTime;
-    handleImageGesture(touchDuration);
-  }, { passive: true });
+    if (!dragging) return;
+    dragging = false;
+    const dx = e.changedTouches[0].screenX - touchStartX;
+    const dy = e.changedTouches[0].screenY - touchStartY;
+    const duration = Date.now() - touchStartTime;
 
-  function handleImageGesture(duration) {
-    const diffX = touchEndX - touchStartX;
-    const diffY = touchEndY - touchStartY;
-    const absDiffX = Math.abs(diffX);
-    const absDiffY = Math.abs(diffY);
-
-    // Check for tap
-    if (duration < maxTapTime && absDiffX < maxTapMovement && absDiffY < maxTapMovement) {
-      if (drawerOpen) {
-        closeDrawer();
-      } else {
-        loadRandom();
-      }
+    // Tap: new random (or close the drawer if it's open).
+    if (duration < maxTapTime && Math.abs(dx) < maxTapMovement && Math.abs(dy) < maxTapMovement) {
+      springBack();
+      if (drawerOpen) closeDrawer(); else loadRandom();
       return;
     }
 
-    // Only allow navigation swipes when drawer is closed
-    if (!drawerOpen && absDiffX > absDiffY && absDiffX > minSwipeDistance) {
-      if (diffX > 0) {
-        // Swipe right = previous
-        goPrev();
-      } else {
-        // Swipe left = next
-        goNext();
-      }
+    // Horizontal swipe past the threshold commits a navigation.
+    if (horizontal && !drawerOpen && Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > minSwipeDistance) {
+      if (dx > 0) goPrev(); else goNext();
+    } else {
+      springBack();
     }
-  }
+  }, { passive: true });
 
   // Menu button and overlay handlers
   els.menuBtn.addEventListener('click', toggleDrawer);
   els.drawerOverlay.addEventListener('click', closeDrawer);
+
+  // On-image caption: tap the title to hide it, tap the pill to bring it back.
+  els.caption.addEventListener('click', () => setCaptionDismissed(true));
+  els.caption.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setCaptionDismissed(true); }
+  });
+  els.captionToggle.addEventListener('click', () => setCaptionDismissed(false));
 
   // Favorites system
   function toggleFavorite() {
@@ -643,6 +722,7 @@
     const heart = els.favoriteBtn.querySelector('.heart');
     const floatingHeart = els.floatingFavoriteBtn.querySelector('.heart-float');
 
+    els.favoriteBtn.setAttribute('aria-pressed', favorited ? 'true' : 'false');
     if (favorited) {
       els.favoriteBtn.classList.add('favorited');
       heart.textContent = '♥';
@@ -678,6 +758,9 @@
       const item = document.createElement('div');
       item.className = 'favorite-item';
       item.dataset.favIndex = String(idx);
+      item.setAttribute('role', 'button');
+      item.tabIndex = 0;
+      item.setAttribute('aria-label', `Open ${fav.title || 'Untitled'}`);
 
       const thumb = safeHttpURL(fav.primaryImageSmall || fav.primaryImage || '');
       if (thumb) {
@@ -731,6 +814,13 @@
           pushHistory(fav);
           setStatus('Loaded favorite', 'info');
           closeDrawer();
+        }
+      });
+
+      item.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          item.click();
         }
       });
 

@@ -10,8 +10,9 @@ A minimal web page that displays a random artwork from the Metropolitan Museum o
 - **Filter by Department** - Narrow results to a specific Met department
 - **Deep Linking** - Share a specific artwork via `?id=` in the URL
 - **Responsive Layout** - Immersive mobile drawer; side-by-side panel on desktop
-- **Touch Gestures** - Tap for a new random artwork, swipe ← / → to navigate history
-- **Keyboard Shortcuts** - `R` random, `←` / `→` history, `F` favorite, `S` save image, `Esc` close drawer
+- **Title Overlay** - Artwork title shown tastefully over the image; tap (or press `T`) to hide
+- **Touch Gestures** - Tap for a new random artwork, swipe ← / → to navigate with a natural finger-tracking transition
+- **Keyboard Shortcuts** - `R` random, `←` / `→` history, `F` favorite, `S` save image, `T` toggle title, `Esc` close drawer
 - **Progressive Image Loading** - Small thumbnail loads first, full-res swaps in
 
 ## Quick Start

@@ -29,6 +29,7 @@
     deptTag: document.getElementById('deptTag'),
     pdTag: document.getElementById('pdTag'),
     deptSelect: document.getElementById('deptSelect'),
+    saveBtn: document.getElementById('saveBtn'),
     shareBtn: document.getElementById('shareBtn'),
     copyBtn: document.getElementById('copyBtn'),
     favoriteBtn: document.getElementById('favoriteBtn'),
@@ -555,6 +556,7 @@
     if (e.key === 'ArrowLeft') { e.preventDefault(); goPrev(); }
     if (e.key === 'ArrowRight') { e.preventDefault(); goNext(); }
     if (e.key === 'f' || e.key === 'F') { e.preventDefault(); toggleFavorite(); }
+    if (e.key === 's' || e.key === 'S') { e.preventDefault(); saveCurrentImage(); }
   });
 
   // Touch gestures
@@ -736,11 +738,36 @@
     });
   }
 
-  function downloadFilename(a) {
+  function extForType(type) {
+    if (/png/i.test(type)) return 'png';
+    if (/webp/i.test(type)) return 'webp';
+    if (/gif/i.test(type)) return 'gif';
+    return 'jpg';
+  }
+
+  function downloadFilename(a, ext = 'jpg') {
     const slug = (s) => String(s || '').toLowerCase()
       .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
     const parts = [slug(a.artistDisplayName), slug(a.title), a.objectID].filter(Boolean);
-    return (parts.length ? parts.join('-') : `met-artwork-${a.objectID}`) + '.jpg';
+    return (parts.length ? parts.join('-') : `met-artwork-${a.objectID}`) + '.' + ext;
+  }
+
+  // Fetch the image as a Blob, trying a direct request first and then falling
+  // back through the CORS proxies. The Met image CDN does not reliably send
+  // CORS headers, so a direct fetch often fails — the proxies are what make
+  // saving work in practice. Returns null only if every source failed.
+  async function fetchImageBlob(imageUrl) {
+    const sources = [imageUrl, ...PROXIES.map(p => proxied(imageUrl, p))];
+    for (const src of sources) {
+      try {
+        const r = await fetch(src);
+        if (!r.ok) continue;
+        const blob = await r.blob();
+        // Skip proxies that hand back an HTML error page instead of the image.
+        if (blob && blob.size > 0 && !/^text\//i.test(blob.type)) return blob;
+      } catch (_) { /* try the next source */ }
+    }
+    return null;
   }
 
   // True when the browser can share image files via the native share sheet —
@@ -755,60 +782,76 @@
     }
   }
 
+  let savingImage = false; // single-flight guard for saveCurrentImage
+  function setSaveButtonsDisabled(disabled) {
+    [els.saveBtn, els.floatingDownloadBtn].forEach((b) => {
+      if (b) b.disabled = disabled;
+    });
+  }
+
   async function saveCurrentImage() {
+    if (savingImage) return;
     if (hIndex < 0 || !history[hIndex]) {
-      setStatus('No image to save', 'error');
+      showToast('No image to save');
       return;
     }
     const current = history[hIndex];
     const imageUrl = safeHttpURL(current.primaryImage || current.primaryImageSmall || '');
     if (!imageUrl) {
-      setStatus('No image available', 'error');
+      showToast('No image available');
       return;
     }
 
+    savingImage = true;
+    setSaveButtonsDisabled(true);
     setStatus('Preparing image…', 'loading');
 
-    let blob;
     try {
-      const r = await fetch(imageUrl);
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      blob = await r.blob();
-    } catch (_) {
-      // CORS or network failure — we can't build a File, so just open the image.
-      window.open(imageUrl, '_blank', 'noopener,noreferrer');
-      setStatus('Opened image in a new tab.', 'info');
-      return;
-    }
+      const blob = await fetchImageBlob(imageUrl);
+      if (!blob) {
+        // Direct fetch and every proxy failed. Open the raw image so the user
+        // can still long-press / right-click to save it manually.
+        window.open(imageUrl, '_blank', 'noopener,noreferrer');
+        setStatus('Ready.', 'info');
+        showToast('Couldn’t download automatically — opened image in a new tab');
+        return;
+      }
 
-    const filename = downloadFilename(current);
+      const filename = downloadFilename(current, extForType(blob.type));
 
-    if (canShareImageFile()) {
-      const file = new File([blob], filename, { type: blob.type || 'image/jpeg' });
-      if (navigator.canShare({ files: [file] })) {
-        try {
-          await navigator.share({ files: [file], title: current.title || 'Met Artwork' });
-          setStatus('Shared.', 'info');
-          return;
-        } catch (err) {
-          if (err && err.name === 'AbortError') {
+      // On mobile the native share sheet is the reliable route into Photos/Files.
+      if (canShareImageFile()) {
+        const file = new File([blob], filename, { type: blob.type || 'image/jpeg' });
+        if (navigator.canShare({ files: [file] })) {
+          try {
+            await navigator.share({ files: [file], title: current.title || 'Met Artwork' });
             setStatus('Ready.', 'info');
             return;
+          } catch (err) {
+            if (err && err.name === 'AbortError') {
+              setStatus('Ready.', 'info');
+              return;
+            }
+            // Any other share failure: fall through to the download link.
           }
-          // Unexpected share failure — fall through to the download path.
         }
       }
-    }
 
-    const blobUrl = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = blobUrl;
-    link.download = filename;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
-    setStatus('Download started', 'info');
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      // Give the browser time to start the download before releasing the URL.
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
+      setStatus('Ready.', 'info');
+      showToast('Image saved');
+    } finally {
+      savingImage = false;
+      setSaveButtonsDisabled(false);
+    }
   }
 
   els.btn.addEventListener('click', loadRandom);
@@ -818,6 +861,7 @@
   els.nextEdge.addEventListener('click', goNext);
   els.favoriteBtn.addEventListener('click', toggleFavorite);
   els.floatingFavoriteBtn.addEventListener('click', toggleFavorite);
+  els.saveBtn.addEventListener('click', saveCurrentImage);
   els.floatingDownloadBtn.addEventListener('click', saveCurrentImage);
   if (canShareImageFile()) {
     els.floatingDownloadBtn.setAttribute('aria-label', 'Save to Photos');

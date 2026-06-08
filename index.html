@@ -108,6 +108,8 @@
     .link{display:inline-block;margin-top:8px;color:var(--primary);text-decoration:none;font-weight:500;font-size:0.95rem;word-wrap:break-word;max-width:100%}
     .link:hover{text-decoration:underline}
 
+    .action-bar button:disabled{opacity:0.55;cursor:progress}
+    .floating-btn:disabled{opacity:0.55;cursor:progress}
     .action-bar{margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
     .action-bar button{flex:1;min-width:120px}
 
@@ -267,6 +269,7 @@
           <button id="favoriteBtn" class="btn-icon" aria-label="Add to favorites (F)" title="Add to favorites">
             <span class="heart">♡</span>
           </button>
+          <button id="saveBtn" class="btn-outline" aria-label="Save image (S)" title="Save image">Save Image</button>
           <button id="shareBtn" class="btn-outline" aria-label="Share this artwork">Share</button>
           <button id="copyBtn" class="btn-outline" aria-label="Copy link to clipboard">Copy Link</button>
         </div>
@@ -288,6 +291,7 @@
             <dt><kbd>R</kbd></dt><dd>New artwork</dd>
             <dt><kbd>←</kbd> <kbd>→</kbd></dt><dd>Previous / next</dd>
             <dt><kbd>F</kbd></dt><dd>Toggle favorite</dd>
+            <dt><kbd>S</kbd></dt><dd>Save image</dd>
             <dt><kbd>Esc</kbd></dt><dd>Close sidebar</dd>
           </dl>
         </div>

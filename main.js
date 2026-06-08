@@ -50,6 +50,7 @@
   let objectIDs = null; // raw object IDs (fallback)
   let imageIDs = [];    // pool of IDs that have images (from /search)
   let preloadQueue = []; // array of preloaded artwork detail objects
+  const recentlyShown = []; // ring buffer of recently displayed IDs (repeat avoidance)
   const history = [];   // array of artwork detail objects
   let hIndex = -1;      // pointer into history
   let currentDetailController = null; // AbortController for details
@@ -214,6 +215,27 @@
     return arr[Math.floor(Math.random() * arr.length)];
   }
 
+  // Record a displayed artwork so we don't re-serve it again too soon. The
+  // window scales with the pool but is capped so smaller pools still cycle.
+  function rememberShown(id) {
+    if (id === undefined || id === null) return;
+    recentlyShown.push(id);
+    const cap = Math.min(150, Math.max(10, Math.floor(imageIDs.length / 2)));
+    while (recentlyShown.length > cap) recentlyShown.shift();
+  }
+
+  // Pick a pool ID we haven't shown recently and isn't already queued, so
+  // random browsing doesn't keep landing on the same handful of pieces.
+  function pickFreshId() {
+    if (!imageIDs.length) return undefined;
+    const queued = new Set(preloadQueue.map(d => d.objectID));
+    for (let i = 0; i < 30; i++) {
+      const id = pickRandom(imageIDs);
+      if (!recentlyShown.includes(id) && !queued.has(id)) return id;
+    }
+    return pickRandom(imageIDs); // pool exhausted relative to history — allow a repeat
+  }
+
   // On-image caption (title overlay). The dismissed state is a sticky
   // preference so it carries across artworks once the user hides it.
   let captionDismissed = localStorage.getItem('met_caption_hidden') === '1';
@@ -244,6 +266,7 @@
   function renderArtwork(a) {
     updateURLParam('id', a.objectID);
     hideImageError();
+    rememberShown(a.objectID);
 
     const small = safeHttpURL(a.primaryImageSmall || a.primaryImage || '');
     const high = safeHttpURL(a.primaryImage || '');
@@ -357,8 +380,8 @@
 
   // ---------- Enhancements ----------
   const LS_KEYS = {
-    IMAGE_POOL_PREFIX: 'met_image_ids_pool_v2_',
-    IMAGE_POOL_TS_PREFIX: 'met_image_ids_pool_ts_v2_',
+    IMAGE_POOL_PREFIX: 'met_image_ids_pool_v3_',
+    IMAGE_POOL_TS_PREFIX: 'met_image_ids_pool_ts_v3_',
   };
 
   function poolKeys(deptId) {
@@ -400,21 +423,27 @@
       return imageIDs;
     }
 
-    // Collect via /search with hasImages=true using random letters
+    // Collect via /search with hasImages=true using random letters.
+    // The Met returns results in a fixed relevance order, so to avoid a pool
+    // dominated by the same popular hits we shuffle each letter's results and
+    // take a balanced slice from every letter.
     const letters = 'abcdefghijklmnopqrstuvwxyz'.split('');
     shuffle(letters);
     const sample = letters.slice(0, 6); // keep it small to reduce requests
     const out = new Set();
     const maxCollect = 600; // cap
+    const perLetter = Math.ceil(maxCollect / sample.length);
     for (const letter of sample) {
       let url = `${MET_API}/search?hasImages=true&q=${encodeURIComponent(letter)}`;
       if (deptId) url += `&departmentId=${encodeURIComponent(deptId)}`;
       try {
         const data = await getJSONWithFallback(url, { retries: 1 });
-        if (data && data.objectIDs) {
-          for (const id of data.objectIDs) {
-            out.add(id);
-            if (out.size >= maxCollect) break;
+        if (data && data.objectIDs && data.objectIDs.length) {
+          const ids = shuffle(data.objectIDs.slice());
+          let added = 0;
+          for (const id of ids) {
+            if (!out.has(id)) { out.add(id); added++; }
+            if (added >= perLetter || out.size >= maxCollect) break;
           }
         }
       } catch(_) { /* skip this letter */ }
@@ -447,7 +476,7 @@
     // else fetch from pool
     await ensurePool();
     for (let tries = 0; tries < 10; tries++) {
-      const id = pickRandom(imageIDs);
+      const id = pickFreshId();
       try {
         const d = await fetchArtworkDetails(id);
         if (d && (d.primaryImage || d.primaryImageSmall)) return d;
@@ -472,7 +501,7 @@
       const maxAttempts = count * 6;
       while (preloadQueue.length < count && attempts < maxAttempts) {
         attempts++;
-        const id = pickRandom(imageIDs);
+        const id = pickFreshId();
         try {
           const d = await fetchArtworkDetails(id);
           if (d && (d.primaryImage || d.primaryImageSmall)) {
@@ -562,6 +591,7 @@
     updateURLParam('dept', currentDept || null);
     imageIDs = []; // reset pool
     preloadQueue = [];
+    recentlyShown.length = 0; // new department → forget old repeat history
     await ensurePool();
     loadRandom();
   });

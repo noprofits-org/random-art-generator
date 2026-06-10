@@ -1,0 +1,347 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>Random Met Artwork</title>
+  <link rel="manifest" href="./manifest.json">
+  <link rel="icon" href="./icons/icon-192x192.png">
+  <link rel="apple-touch-icon" href="./icons/icon-192x192.png">
+  <style>
+    :root { --primary:#0062cc; --muted:#666; --radius:8px; }
+    *{box-sizing:border-box}
+    html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;color:#222;-webkit-font-smoothing:antialiased;overscroll-behavior:none}
+
+    /* Mobile-first: Full-screen app layout */
+    .app-container{position:fixed;top:0;left:0;right:0;bottom:0;display:flex;flex-direction:column;background:#000}
+
+    /* Hamburger menu button */
+    .menu-btn{position:fixed;top:16px;left:16px;z-index:300;background:rgba(255,255,255,0.2);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,0.3);border-radius:8px;padding:10px;width:44px;height:44px;cursor:pointer;display:flex;flex-direction:column;justify-content:space-around;align-items:center;transition:background 0.2s}
+    .menu-btn span{display:block;width:24px;height:2px;background:#fff;border-radius:2px;transition:all 0.3s}
+    .menu-btn:active{background:rgba(255,255,255,0.4)}
+    .menu-btn.open span:nth-child(1){transform:translateY(7px) rotate(45deg)}
+    .menu-btn.open span:nth-child(2){opacity:0}
+    .menu-btn.open span:nth-child(3){transform:translateY(-7px) rotate(-45deg)}
+
+    /* Floating action buttons */
+    .floating-btn{position:fixed;bottom:20px;z-index:300;background:rgba(255,255,255,0.2);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,0.3);border-radius:50%;padding:12px;width:52px;height:52px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all 0.2s;font-size:1.4rem;color:#fff;box-shadow:0 4px 12px rgba(0,0,0,0.3)}
+    .floating-btn:active{transform:scale(0.95)}
+    .favorite-btn-float{right:20px}
+    .favorite-btn-float.favorited{background:rgba(231,76,60,0.9)!important;border-color:rgba(231,76,60,1)!important}
+    .download-btn-float{left:20px}
+
+    /* Full-screen image container */
+    .image-viewport{flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden;position:relative;background:#000}
+    .image-stack{position:relative;width:100%;height:100%}
+    .art-img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;-webkit-user-drag:none;pointer-events:none}
+    .art-img-high{opacity:0;transition:opacity 0.35s ease-out}
+    .art-img-high.loaded{opacity:1}
+
+    /* Swipe / navigation transition on the image stack */
+    .image-stack{will-change:transform,opacity}
+    @media (prefers-reduced-motion: reduce){
+      .image-stack{transition:none!important}
+    }
+
+    /* On-image caption (title overlay) */
+    .caption{position:absolute;left:0;right:0;bottom:0;z-index:8;padding:52px 84px 84px 18px;background:linear-gradient(to top,rgba(0,0,0,0.72),rgba(0,0,0,0.35) 55%,transparent);color:#fff;cursor:pointer;transition:opacity 0.25s ease,transform 0.25s ease;-webkit-user-select:none;user-select:none}
+    .caption[hidden]{display:none}
+    .caption.dismissed{opacity:0;transform:translateY(8px);pointer-events:none}
+    .caption-title{display:block;font-size:1.15rem;font-weight:600;line-height:1.3;text-shadow:0 1px 3px rgba(0,0,0,0.6);word-wrap:break-word}
+    .caption-meta{display:block;margin-top:3px;font-size:0.85rem;opacity:0.9;text-shadow:0 1px 3px rgba(0,0,0,0.6)}
+    .caption-hint{display:block;margin-top:6px;font-size:0.7rem;opacity:0.65;letter-spacing:0.02em}
+    .caption-toggle{position:absolute;bottom:84px;left:50%;transform:translateX(-50%);z-index:9;width:auto;min-height:0;flex:0 0 auto;background:rgba(0,0,0,0.55);color:#fff;border:1px solid rgba(255,255,255,0.25);border-radius:18px;padding:6px 14px;font-size:0.78rem;font-weight:500;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);box-shadow:0 2px 8px rgba(0,0,0,0.3);opacity:0;visibility:hidden;transition:opacity 0.2s,visibility 0.2s}
+    .caption-toggle.visible{opacity:1;visibility:visible}
+    @media (min-width: 768px){
+      .caption{padding:52px 24px 22px 24px}
+      .caption-toggle{bottom:20px}
+    }
+
+    /* Loading spinner overlay */
+    .image-loader{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.35);opacity:0;pointer-events:none;transition:opacity 0.2s;z-index:10}
+    .image-loader.visible{opacity:1}
+    .spinner{width:40px;height:40px;border:3px solid rgba(255,255,255,0.2);border-top-color:#fff;border-radius:50%;animation:spin 0.8s linear infinite}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    @media (prefers-reduced-motion: reduce){
+      .spinner{animation-duration:2s}
+      .art-img-high{transition:none}
+    }
+
+    /* Image error overlay */
+    .image-error{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:rgba(0,0,0,0.85);color:#fff;z-index:15;padding:20px;text-align:center}
+    .image-error[hidden]{display:none}
+    .image-error-text{font-size:1rem}
+    .image-error button{max-width:200px}
+
+    /* First-run hint overlay */
+    .first-hint{position:absolute;bottom:108px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.75);color:#fff;padding:10px 16px;border-radius:20px;font-size:0.85rem;z-index:20;pointer-events:none;animation:fadeInHint 0.4s ease-out;max-width:90%;text-align:center;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+    @keyframes fadeInHint{from{opacity:0;transform:translate(-50%,10px)}to{opacity:1;transform:translate(-50%,0)}}
+
+    /* Edge prev/next chevrons (desktop only) */
+    .edge-btn{display:none}
+
+    /* Toast */
+    .toast{position:fixed;bottom:88px;left:50%;transform:translate(-50%,20px);background:rgba(30,30,30,0.95);color:#fff;padding:10px 18px;border-radius:22px;font-size:0.9rem;z-index:400;opacity:0;pointer-events:none;transition:opacity 0.2s,transform 0.2s;box-shadow:0 6px 20px rgba(0,0,0,0.4);max-width:85vw;text-align:center}
+    .toast.visible{opacity:1;transform:translate(-50%,0)}
+    @media (min-width: 768px){
+      .toast{bottom:24px;left:auto;right:24px;transform:translate(0,20px)}
+      .toast.visible{transform:translate(0,0)}
+    }
+
+    /* Drawer collapse toggle (desktop only) */
+    .drawer-toggle{display:none}
+
+    /* Side drawer */
+    .drawer{position:fixed;top:0;left:0;bottom:0;width:320px;max-width:85vw;background:#fff;box-shadow:2px 0 20px rgba(0,0,0,0.3);transform:translateX(-100%);transition:transform 0.3s cubic-bezier(0.4,0,0.2,1);z-index:250;display:flex;flex-direction:column;overflow-x:hidden;overflow-y:auto;-webkit-overflow-scrolling:touch}
+    .drawer.open{transform:translateX(0)}
+
+    /* Drawer overlay */
+    .drawer-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:240;opacity:0;visibility:hidden;transition:opacity 0.3s,visibility 0.3s}
+    .drawer-overlay.visible{opacity:1;visibility:visible}
+
+    .drawer-content{flex:1;overflow-y:auto;overflow-x:hidden;padding:80px 16px 20px 16px;-webkit-overflow-scrolling:touch;max-width:100%}
+
+    .status{margin:8px 0;color:var(--muted);font-size:0.9rem;text-align:center}
+    .status.error{color:#c0392b}
+    .status.loading{color:#555}
+
+    .controls{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap}
+    select{padding:10px 12px;border-radius:var(--radius);border:1px solid #ddd;font-size:0.95rem;background:#fff;flex:1;min-height:44px;-webkit-appearance:none;appearance:none;background-image:url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");background-repeat:no-repeat;background-position:right 8px center;background-size:20px;padding-right:32px}
+
+    .nav-group{display:flex;gap:8px;width:100%}
+    button{background:var(--primary);color:#fff;border:0;border-radius:var(--radius);padding:12px 16px;font-weight:600;cursor:pointer;font-size:0.95rem;min-height:44px;white-space:nowrap;transition:background 0.2s,transform 0.1s;flex:1}
+    button:active{transform:scale(0.98)}
+    button[disabled]{opacity:.6;cursor:not-allowed;transform:none}
+
+    /* Accessible focus rings (keyboard only) */
+    button:focus-visible,select:focus-visible,a:focus-visible,.favorite-item:focus-visible,.caption:focus-visible{outline:2px solid var(--primary);outline-offset:2px;border-radius:var(--radius)}
+    .floating-btn:focus-visible,.caption-toggle:focus-visible,.menu-btn:focus-visible{outline:2px solid #fff;outline-offset:2px}
+
+    .btn-outline{background:#fff!important;color:var(--primary)!important;border:2px solid var(--primary)!important}
+    .btn-icon{background:#fff!important;color:#e74c3c!important;border:2px solid #e74c3c!important;padding:10px 14px!important;font-size:1.2rem;line-height:1}
+    .btn-icon.favorited{background:#e74c3c!important;color:#fff!important}
+    .btn-icon .heart{display:inline-block;transition:transform 0.2s}
+    .btn-icon:active .heart{transform:scale(1.3)}
+
+    .info{margin:16px 0;word-wrap:break-word;overflow-wrap:break-word;max-width:100%}
+    .title{margin:0 0 8px 0;font-size:1.2rem;line-height:1.3;font-weight:600;word-wrap:break-word}
+    .meta{color:var(--muted);margin:4px 0;font-size:0.9rem;line-height:1.4;word-wrap:break-word}
+    .link{display:inline-block;margin-top:8px;color:var(--primary);text-decoration:none;font-weight:500;font-size:0.95rem;word-wrap:break-word;max-width:100%}
+    .link:hover{text-decoration:underline}
+
+    .action-bar button:disabled{opacity:0.55;cursor:progress}
+    .floating-btn:disabled{opacity:0.55;cursor:progress}
+    .action-bar{margin-top:16px;display:flex;flex-direction:column;gap:8px}
+    .action-row{display:flex;gap:8px}
+    .action-row button{flex:1;min-width:0}
+    .action-row .btn-icon{flex:0 0 auto}
+
+    .tags{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+    .tag{font-size:0.85rem;padding:4px 10px;border-radius:6px;font-weight:500;white-space:nowrap}
+    .tag-dept{background:#eef5ff;color:#0062cc}
+    .tag-pd{background:#d4edda;color:#155724;border:1px solid #c3e6cb}
+
+    .gesture-hint{margin-top:16px;font-size:0.75rem;color:#6a6a6a;text-align:center;line-height:1.5;padding:8px 10px;background:#f6f6f6;border-radius:8px}
+
+    /* Keyboard shortcuts list */
+    .shortcuts{display:none}
+    .shortcuts-header{font-weight:600;font-size:0.9rem;color:#333;margin-bottom:8px}
+    .shortcuts-list{margin:0;display:grid;grid-template-columns:auto 1fr;gap:6px 12px;align-items:center;font-size:0.85rem}
+    .shortcuts-list dt{margin:0}
+    .shortcuts-list dd{margin:0;color:var(--muted)}
+    .shortcuts-list kbd{display:inline-block;padding:2px 6px;font:500 0.8rem ui-monospace,SFMono-Regular,Menlo,monospace;background:#f3f3f3;border:1px solid #ddd;border-bottom-width:2px;border-radius:4px;color:#333;min-width:20px;text-align:center}
+
+    /* Favorites list */
+    .favorites-section{margin-top:24px;border-top:1px solid #eee;padding-top:16px}
+    .favorites-header{font-weight:600;font-size:0.95rem;margin-bottom:12px;color:#333}
+    .favorites-list{display:flex;flex-direction:column;gap:8px}
+    .favorite-item{background:#f9f9f9;border-radius:8px;padding:10px 12px;cursor:pointer;transition:background 0.2s;display:flex;align-items:center;gap:10px;border:1px solid #eee}
+    .favorite-item:active{background:#f0f0f0}
+    .favorite-item-thumb{width:48px;height:48px;object-fit:cover;border-radius:4px;background:#e0e0e0;flex-shrink:0}
+    .favorite-item-info{flex:1;min-width:0}
+    .favorite-item-title{font-size:0.9rem;font-weight:500;margin:0 0 2px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .favorite-item-artist{font-size:0.8rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .favorite-item-remove{color:#e74c3c;font-size:1.25rem;flex-shrink:0;line-height:1;width:36px;height:36px;min-width:36px;padding:0;display:flex;align-items:center;justify-content:center;background:transparent;border:1px solid transparent;border-radius:50%;cursor:pointer;transition:background 0.15s,border-color 0.15s}
+    .favorite-item-remove:hover,.favorite-item-remove:focus-visible{background:rgba(231,76,60,0.1);border-color:rgba(231,76,60,0.3);outline:none}
+    .favorite-item-remove:active{background:rgba(231,76,60,0.2)}
+    .favorites-empty{text-align:center;color:var(--muted);font-size:0.85rem;padding:16px}
+
+    footer{margin-top:16px;text-align:center;color:#999;font-size:0.75rem;line-height:1.4;padding:8px 0}
+
+    /* Tablet/Desktop: Side-by-side panel layout */
+    @media (min-width: 768px) {
+      html,body{overflow:hidden}
+      .app-container{position:fixed;top:0;left:0;right:0;bottom:0;flex-direction:row;background:#1a1a1a;max-width:none;margin:0;height:100vh}
+      .menu-btn{display:none}
+      .floating-btn{display:none}
+
+      /* Left panel - controls */
+      .drawer{position:relative;transform:none!important;width:340px;min-width:340px;max-width:340px;height:100vh;border-radius:0;margin:0;box-shadow:none;border-right:1px solid #333;background:#fff;z-index:1;order:-1;transition:width 0.25s ease,min-width 0.25s ease,max-width 0.25s ease,border-right-color 0.25s ease}
+      .drawer-overlay{display:none}
+      .drawer-content{padding:20px;height:100%;overflow-y:auto;transition:opacity 0.15s}
+
+      /* Collapsed drawer */
+      .app-container.drawer-collapsed .drawer{width:0;min-width:0;max-width:0;border-right-color:transparent;overflow:hidden}
+      .app-container.drawer-collapsed .drawer-content{opacity:0;pointer-events:none}
+
+      /* Right panel - image (maximized) */
+      .image-viewport{flex:1;height:100vh;min-height:100vh;background:#000;border:none;border-radius:0;margin:0;order:1}
+      .art-img{width:100%;height:100%;max-height:100vh}
+
+      .gesture-hint{display:none}
+      .shortcuts{display:block;margin-top:20px;border-top:1px solid #eee;padding-top:16px}
+
+      /* Edge chevrons */
+      .edge-btn{display:flex;position:absolute;top:50%;transform:translateY(-50%);width:48px;height:64px;align-items:center;justify-content:center;background:rgba(0,0,0,0.25);color:#fff;border:none;font-size:2rem;line-height:1;cursor:pointer;z-index:50;opacity:0;transition:opacity 0.2s,background 0.2s;border-radius:6px;padding:0}
+      .edge-btn:hover:not([disabled]){background:rgba(0,0,0,0.55)}
+      .edge-btn[disabled]{cursor:default;opacity:0!important}
+      .edge-left{left:12px}
+      .edge-right{right:12px}
+      .image-viewport:hover .edge-btn:not([disabled]){opacity:1}
+      .edge-btn:focus-visible{opacity:1;outline:2px solid #fff;outline-offset:2px}
+
+      /* Drawer collapse button */
+      .drawer-toggle{display:flex;position:fixed;top:50%;left:340px;transform:translate(-50%,-50%);width:28px;height:56px;align-items:center;justify-content:center;background:rgba(255,255,255,0.9);color:#333;border:1px solid #ccc;border-radius:6px;font-size:1.1rem;line-height:1;cursor:pointer;z-index:100;padding:0;transition:left 0.25s ease,background 0.15s;box-shadow:2px 0 6px rgba(0,0,0,0.15)}
+      .drawer-toggle:hover{background:#fff}
+      .app-container.drawer-collapsed .drawer-toggle{left:0}
+      .app-container.drawer-collapsed .drawer-toggle-glyph{transform:rotate(180deg)}
+      .drawer-toggle-glyph{display:inline-block;transition:transform 0.2s}
+
+      /* Toasts on desktop should stay above edge chevrons */
+      .toast{z-index:500}
+
+      /* First hint is desktop-noise; keep on mobile only */
+      .first-hint{display:none}
+    }
+  </style>
+</head>
+<body>
+  <div class="app-container">
+    <!-- Hamburger menu button -->
+    <button id="menuBtn" class="menu-btn" type="button" aria-label="Open menu" title="Menu" aria-controls="drawer" aria-expanded="false">
+      <span></span>
+      <span></span>
+      <span></span>
+    </button>
+
+    <!-- Full-screen image -->
+    <div class="image-viewport" id="imageViewport">
+      <div class="image-stack">
+        <img id="artImg" class="art-img" alt="Artwork" />
+        <img id="artImgHigh" class="art-img art-img-high" alt="" aria-hidden="true" />
+      </div>
+
+      <div id="caption" class="caption" role="button" tabindex="0" aria-label="Artwork title — tap to hide" hidden>
+        <span id="captionTitle" class="caption-title"></span>
+        <span id="captionMeta" class="caption-meta"></span>
+        <span class="caption-hint">Tap to hide</span>
+      </div>
+      <button id="captionToggle" class="caption-toggle" type="button" aria-label="Show artwork title">ⓘ Title</button>
+
+      <div id="imageLoader" class="image-loader" aria-hidden="true">
+        <div class="spinner"></div>
+      </div>
+
+      <div id="imageError" class="image-error" hidden>
+        <div class="image-error-text">Couldn't load image.</div>
+        <button id="imageErrorBtn" type="button" class="btn-outline">Try another</button>
+      </div>
+
+      <button id="prevEdge" class="edge-btn edge-left" type="button" aria-label="Previous artwork" title="Previous (←)">‹</button>
+      <button id="nextEdge" class="edge-btn edge-right" type="button" aria-label="Next artwork" title="Next (→)">›</button>
+
+      <div id="firstHint" class="first-hint" hidden>
+        Tap for a new artwork · Swipe ← → to navigate
+      </div>
+    </div>
+
+    <!-- Desktop drawer collapse toggle -->
+    <button id="drawerToggle" class="drawer-toggle" type="button" aria-label="Hide sidebar" title="Hide sidebar"><span class="drawer-toggle-glyph">‹</span></button>
+
+    <!-- Floating action buttons -->
+    <button id="floatingFavoriteBtn" class="floating-btn favorite-btn-float" aria-label="Toggle favorite" title="Favorite">
+      <span class="heart-float">♡</span>
+    </button>
+    <button id="floatingDownloadBtn" class="floating-btn download-btn-float" aria-label="Download image" title="Download">
+      ⬇
+    </button>
+
+    <!-- Drawer overlay -->
+    <div id="drawerOverlay" class="drawer-overlay"></div>
+
+    <!-- Side drawer -->
+    <div id="drawer" class="drawer" role="dialog" aria-modal="true" aria-label="Menu and artwork details">
+
+      <div class="drawer-content">
+        <div id="status" class="status" role="status" aria-live="polite">Ready</div>
+
+        <div class="controls">
+          <select id="deptSelect" title="Filter by department">
+            <option value="">All Departments</option>
+          </select>
+        </div>
+
+        <div class="nav-group">
+          <button id="prevBtn" title="Previous (←)" aria-label="Previous artwork">← Prev</button>
+          <button id="randomBtn" title="Random (R)" aria-label="Load random artwork">🎲 New</button>
+          <button id="nextBtn" title="Next (→)" aria-label="Next artwork">Next →</button>
+        </div>
+
+        <div class="tags">
+          <span id="deptTag" class="tag tag-dept" style="display:none"></span>
+          <span id="pdTag" class="tag tag-pd" style="display:none">Public Domain</span>
+        </div>
+
+        <div class="info" id="info"></div>
+
+        <div class="action-bar">
+          <div class="action-row">
+            <button id="favoriteBtn" class="btn-icon" aria-label="Add to favorites (F)" title="Add to favorites" aria-pressed="false">
+              <span class="heart">♡</span>
+            </button>
+            <button id="saveBtn" aria-label="Save image (S)" title="Save image">Save Image</button>
+          </div>
+          <div class="action-row">
+            <button id="shareBtn" class="btn-outline" aria-label="Share this artwork">Share</button>
+            <button id="copyBtn" class="btn-outline" aria-label="Copy link to clipboard">Copy Link</button>
+          </div>
+        </div>
+
+        <div class="favorites-section" id="favoritesSection">
+          <div class="favorites-header">My Favorites (<span id="favoritesCount">0</span>)</div>
+          <div class="favorites-list" id="favoritesList">
+            <div class="favorites-empty">No favorites yet. Tap the heart to add!</div>
+          </div>
+        </div>
+
+        <div class="gesture-hint">
+          💡 Tap image for random • Swipe ← → to navigate
+        </div>
+
+        <div class="shortcuts">
+          <div class="shortcuts-header">Keyboard shortcuts</div>
+          <dl class="shortcuts-list">
+            <dt><kbd>R</kbd></dt><dd>New artwork</dd>
+            <dt><kbd>←</kbd> <kbd>→</kbd></dt><dd>Previous / next</dd>
+            <dt><kbd>F</kbd></dt><dd>Toggle favorite</dd>
+            <dt><kbd>S</kbd></dt><dd>Save image</dd>
+            <dt><kbd>T</kbd></dt><dd>Toggle title overlay</dd>
+            <dt><kbd>Esc</kbd></dt><dd>Close sidebar</dd>
+          </dl>
+        </div>
+
+        <footer>
+          Images and data courtesy of The Metropolitan Museum of Art
+        </footer>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+  <script src="./main.js"></script>
+</body>
+</html>

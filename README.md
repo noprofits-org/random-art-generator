@@ -1,19 +1,25 @@
-# Met Art Generator (Simplified)
+# Salon · Met Art
 
-A minimal web page that displays a random artwork from the Metropolitan Museum of Art collection using the public API. Single HTML + JS, no build, no frameworks.
+A polished mobile-first app for exploring the Metropolitan Museum of Art's open-access
+collection. React rendered through in-browser Babel — **still no build step, just static
+files** — so it deploys to GitHub Pages exactly like a plain HTML page.
 
-## Features
+## Screens
 
-- **Random Artwork Discovery** - Explore random pieces from the Met's collection
-- **Favorites** - Save favorite artworks to local storage
-- **Save Image** - Download the artwork (or save to Photos via the share sheet on mobile), with automatic CORS-proxy fallback so it works even when the image server blocks direct downloads
-- **Filter by Department** - Narrow results to a specific Met department
-- **Deep Linking** - Share a specific artwork via `?id=` in the URL
-- **Responsive Layout** - Immersive mobile drawer; side-by-side panel on desktop
-- **Title Overlay** - Artwork title shown tastefully over the image; tap (or press `T`) to hide
-- **Touch Gestures** - Tap for a new random artwork, swipe ← / → to navigate with a natural finger-tracking transition
-- **Keyboard Shortcuts** - `R` random, `←` / `→` history, `F` favorite, `S` save image, `T` toggle title, `Esc` close drawer
-- **Progressive Image Loading** - Small thumbnail loads first, full-res swaps in
+- **Discover** - A swipeable card stack: swipe right (or tap the heart) to save, swipe left to pass, tap to open details.
+- **Search** - Search the collection and filter by Met department, shown as a masonry grid.
+- **Today** - A date-deterministic "Artwork of the Day" plus a daily visit streak.
+- **Saved** - Your favorites collection, persisted in local storage.
+- **Detail** - Full artwork view with zoom/pan lightbox, metadata, public-domain badge, share, and a *Curator's Note*.
+
+> **Curator's Note:** the AI-written note only works inside Claude's design environment
+> (it calls `window.claude.complete`). On the deployed site it gracefully shows a
+> "not available right now" message. Wiring it to a real AI backend is future work.
+
+## The classic version
+
+The previous single-file version is preserved at [`classic.html`](./classic.html)
+(powered by [`main.js`](./main.js)) so you can compare the two experiences live.
 
 ## Quick Start
 
@@ -31,17 +37,27 @@ A minimal web page that displays a random artwork from the Metropolitan Museum o
 
 ## What’s Included
 
-- `index.html` – Minimal UI with a button to load a random artwork
-- `main.js` – Fetch logic with a simple CORS-proxy fallback
-- `icons/` – App icons (for favicons or future PWA use)
+- `index.html` – Salon app shell: styles, fonts, and the React/Babel script tags
+- `js/` – The app, split into focused files:
+  - `met.jsx` – Met API service (direct fetch → CORS-proxy fallback)
+  - `store.jsx` – Favorites + daily-streak persistence (local storage)
+  - `icons.jsx` – Line-icon set
+  - `discover.jsx` · `search.jsx` · `daily.jsx` · `saved.jsx` – the four tab screens
+  - `detail.jsx` – Detail overlay, lightbox, and curator's note
+  - `app.jsx` – Tab routing, detail overlay host, and toasts
+- `classic.html` + `main.js` – The previous single-file version, kept for reference
+- `icons/` – App icons (favicons / PWA)
 - `tools/icon-resizer/` – A standalone, browser‑only icon generator
 
 ## Project Structure
 
 ```
 random-art-generator/
-├── index.html
-├── main.js
+├── index.html        # Salon app
+├── js/               # Salon app components (.jsx, transpiled in-browser)
+├── classic.html      # previous version
+├── main.js           # powers classic.html
+├── manifest.json
 ├── icons/
 └── tools/
     └── icon-resizer/
@@ -49,7 +65,10 @@ random-art-generator/
 
 ## Development
 
-There is no build step — edit `index.html` / `main.js` and reload. Serve over `http://` during development if you need `fetch` to hit the Met API without CORS-proxy fallback.
+There is no build step. The `.jsx` files are transpiled in the browser by Babel
+Standalone, so you just edit and reload. **Serve over `http://`** during development
+(e.g. `python3 -m http.server 8000`) — opening `index.html` from `file://` won't work,
+because the browser blocks Babel from loading the `.jsx` files over the `file:` protocol.
 
 ### API Integration
 
